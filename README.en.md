@@ -1,6 +1,6 @@
 # OpsPilot
 
-[中文版](D:/桌面/codex/260415-OpsPilot%203.0/README.zh-CN.md)
+[中文版](README.zh-CN.md)
 
 > An intelligent operations assistant built on RAG and MCP
 

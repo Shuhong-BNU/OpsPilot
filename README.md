@@ -2,14 +2,14 @@
 
 `OpsPilot` is an interview-ready Agent engineering project for enterprise operations scenarios.
 
-- 中文版：[`README.zh-CN.md`](D:/桌面/codex/260415-OpsPilot%203.0/README.zh-CN.md)
-- English: [`README.en.md`](D:/桌面/codex/260415-OpsPilot%203.0/README.en.md)
+- 中文版：[`README.zh-CN.md`](README.zh-CN.md)
+- English: [`README.en.md`](README.en.md)
 
 ## Quick Links
 
-- Chinese intro: [`README.zh-CN.md`](D:/桌面/codex/260415-OpsPilot%203.0/README.zh-CN.md)
-- English intro: [`README.en.md`](D:/桌面/codex/260415-OpsPilot%203.0/README.en.md)
-- Environment template: [`.env.example`](D:/桌面/codex/260415-OpsPilot%203.0/.env.example)
+- Chinese intro: [`README.zh-CN.md`](README.zh-CN.md)
+- English intro: [`README.en.md`](README.en.md)
+- Environment template: [`.env.example`](.env.example)
 
 ## Positioning
 

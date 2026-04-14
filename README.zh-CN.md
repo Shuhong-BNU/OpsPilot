@@ -1,6 +1,6 @@
 # OpsPilot
 
-[English Version](D:/桌面/codex/260415-OpsPilot%203.0/README.en.md)
+[English Version](README.en.md)
 
 > 基于 RAG 与 MCP 的智能运维助手
 

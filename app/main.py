@@ -3,14 +3,14 @@
 主应用程序，配置路由、中间件、静态文件等
 """
 
+import os
+from contextlib import asynccontextmanager
 from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from contextlib import asynccontextmanager
-import os
+from fastapi.staticfiles import StaticFiles
 
 from app.config import config
 from loguru import logger
@@ -19,6 +19,24 @@ from app.core.milvus_client import milvus_manager
 from app.services.auth_service import auth_service
 from app.services.database_service import database_service
 from app.services.metrics_service import metrics_service
+
+
+FRONTEND_SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' https://cdnjs.cloudflare.com; "
+        "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "font-src 'self' https://cdnjs.cloudflare.com data:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    ),
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 @asynccontextmanager
@@ -93,12 +111,16 @@ async def metrics_middleware(request: Request, call_next):
     metrics_service.observe("http_request_latency", int((perf_counter() - started_at) * 1000))
     return response
 
+
 @app.get("/")
 async def root():
     """返回首页"""
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        response = FileResponse(index_path)
+        for header, value in FRONTEND_SECURITY_HEADERS.items():
+            response.headers[header] = value
+        return response
     return {
         "message": f"Welcome to {config.app_name} API",
         "version": config.app_version,

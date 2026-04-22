@@ -435,9 +435,21 @@ button {
     color: var(--danger);
 }
 
+.history-item-delete:disabled,
+.history-item-delete:disabled:hover {
+    cursor: not-allowed;
+    opacity: 0.48;
+    background: transparent;
+    color: var(--muted);
+}
+
 .history-item-delete svg {
     width: 16px;
     height: 16px;
+}
+
+.history-item.deleting {
+    opacity: 0.72;
 }
 
 .sidebar-footer {
@@ -1051,6 +1063,33 @@ button {
 .message.assistant .message-time,
 .message.assistant .message-timing {
     text-align: left;
+}
+
+.message-history-gate {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 18px;
+}
+
+.message-history-gate-btn {
+    padding: 10px 16px;
+}
+
+.message-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 0 6px;
+}
+
+.message-retry-btn {
+    padding: 8px 14px;
+}
+
+.message-retry-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .message-content p:first-child {

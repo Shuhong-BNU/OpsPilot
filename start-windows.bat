@@ -114,13 +114,13 @@ echo [OK] Milvus is ready.
 echo.
 
 echo [5/8] Start CLS MCP service...
-start "CLS MCP Server" /min cmd /c "\"%PYTHON_CMD%\" \"mcp_servers\cls_server.py\" > logs\mcp_cls.log 2>&1"
+start "CLS MCP Server" /min cmd /c ""%PYTHON_CMD%" "mcp_servers\cls_server.py" > "logs\mcp_cls.log" 2>&1"
 timeout /t 2 /nobreak >nul
 echo [OK] CLS MCP service started.
 echo.
 
 echo [6/8] Start Monitor MCP service...
-start "Monitor MCP Server" /min cmd /c "\"%PYTHON_CMD%\" \"mcp_servers\monitor_server.py\" > logs\mcp_monitor.log 2>&1"
+start "Monitor MCP Server" /min cmd /c ""%PYTHON_CMD%" "mcp_servers\monitor_server.py" > "logs\mcp_monitor.log" 2>&1"
 timeout /t 2 /nobreak >nul
 echo [OK] Monitor MCP service started.
 echo.

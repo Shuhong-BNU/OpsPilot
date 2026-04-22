@@ -21,6 +21,12 @@ class OpsPilotApp {
         this.isStreaming = false;
         this.streamController = null;
         this.systemStatusCache = null;
+        this.chatRenderLimit = 80;
+        this.showFullChatHistory = false;
+        this.pendingMessageRenders = new Set();
+        this.pendingMessageRenderFrame = null;
+        this.pendingScrollToBottom = false;
+        this.deletingSessionIds = new Set();
 
         this.sidebarCollapsed = localStorage.getItem(this.storageKeys.sidebarCollapsed) === "1";
         this.sidebarWidth = this.clampSidebarWidth(this.readStoredNumber(this.storageKeys.sidebarWidth, 348));
@@ -162,27 +168,27 @@ class OpsPilotApp {
 
         this.toolsBtn.addEventListener("click", (event) => {
             event.stopPropagation();
-            this.modeSelectorWrapper.classList.remove("open");
-            this.toolsBtnWrapper.classList.toggle("open");
+            this.toggleModeSelector(false);
+            this.toggleToolsMenu();
         });
         this.uploadFileItem.addEventListener("click", () => {
             if (!this.ensureOperatorPermission("上传知识文档")) {
                 return;
             }
-            this.toolsBtnWrapper.classList.remove("open");
+            this.toggleToolsMenu(false);
             this.fileInput.click();
         });
         this.fileInput.addEventListener("change", (event) => this.handleFileSelection(event));
 
         this.modeSelectorBtn.addEventListener("click", (event) => {
             event.stopPropagation();
-            this.toolsBtnWrapper.classList.remove("open");
-            this.modeSelectorWrapper.classList.toggle("open");
+            this.toggleToolsMenu(false);
+            this.toggleModeSelector();
         });
         this.modeItems.forEach((item) => {
             item.addEventListener("click", () => {
                 this.setMode(item.dataset.mode);
-                this.modeSelectorWrapper.classList.remove("open");
+                this.toggleModeSelector(false);
             });
         });
 
@@ -190,6 +196,9 @@ class OpsPilotApp {
             const deleteButton = event.target.closest(".history-item-delete");
             if (deleteButton) {
                 event.stopPropagation();
+                if (deleteButton.disabled) {
+                    return;
+                }
                 this.deleteHistorySession(deleteButton.dataset.sessionId);
                 return;
             }
@@ -198,11 +207,15 @@ class OpsPilotApp {
             if (!item) {
                 return;
             }
+            if (this.isSessionDeleting(item.dataset.sessionId)) {
+                return;
+            }
 
             this.loadHistorySession(item.dataset.sessionId);
         });
 
         document.addEventListener("click", (event) => this.handleDocumentClick(event));
+        document.addEventListener("keydown", (event) => this.handleGlobalKeydown(event));
         window.addEventListener("resize", () => this.handleWindowResize());
     }
 
@@ -211,10 +224,30 @@ class OpsPilotApp {
             this.closeAccountMenu();
         }
         if (!this.toolsBtnWrapper.contains(event.target)) {
-            this.toolsBtnWrapper.classList.remove("open");
+            this.toggleToolsMenu(false);
         }
         if (!this.modeSelectorWrapper.contains(event.target)) {
-            this.modeSelectorWrapper.classList.remove("open");
+            this.toggleModeSelector(false);
+        }
+    }
+
+    handleGlobalKeydown(event) {
+        if (event.key !== "Escape") {
+            return;
+        }
+        if (this.modeSelectorWrapper.classList.contains("open")) {
+            this.toggleModeSelector(false);
+            this.modeSelectorBtn.focus();
+            return;
+        }
+        if (this.toolsBtnWrapper.classList.contains("open")) {
+            this.toggleToolsMenu(false);
+            this.toolsBtn.focus();
+            return;
+        }
+        if (!this.accountMenu.classList.contains("hidden")) {
+            this.toggleAccountMenu(false);
+            this.accountMenuBtn.focus();
         }
     }
 
@@ -227,6 +260,7 @@ class OpsPilotApp {
         const nextOpen = forceOpen === null ? this.accountMenu.classList.contains("hidden") : forceOpen;
         this.accountShell.classList.toggle("open", nextOpen);
         this.accountMenu.classList.toggle("hidden", !nextOpen);
+        this.accountMenuBtn.setAttribute("aria-expanded", String(nextOpen));
 
         if (nextOpen && this.isAuthenticated) {
             this.loadSystemStatus(false);
@@ -234,8 +268,19 @@ class OpsPilotApp {
     }
 
     closeAccountMenu() {
-        this.accountShell.classList.remove("open");
-        this.accountMenu.classList.add("hidden");
+        this.toggleAccountMenu(false);
+    }
+
+    toggleToolsMenu(forceOpen = null) {
+        const nextOpen = forceOpen === null ? !this.toolsBtnWrapper.classList.contains("open") : forceOpen;
+        this.toolsBtnWrapper.classList.toggle("open", nextOpen);
+        this.toolsBtn.setAttribute("aria-expanded", String(nextOpen));
+    }
+
+    toggleModeSelector(forceOpen = null) {
+        const nextOpen = forceOpen === null ? !this.modeSelectorWrapper.classList.contains("open") : forceOpen;
+        this.modeSelectorWrapper.classList.toggle("open", nextOpen);
+        this.modeSelectorBtn.setAttribute("aria-expanded", String(nextOpen));
     }
 
     toggleSidebar(forceCollapsed = null) {
@@ -307,6 +352,7 @@ class OpsPilotApp {
             await this.syncSessionsFromBackend();
             await this.loadSystemStatus(false);
         } catch (error) {
+            this.renderChatHistory();
             console.error("恢复登录态失败:", error);
             this.handleLogout(false);
         } finally {
@@ -474,6 +520,7 @@ class OpsPilotApp {
                     messages: cached?.messages || [],
                 };
             });
+            this.pruneDeletingSessionIds();
             this.saveChatHistories();
         } catch (error) {
             console.error("同步会话失败:", error);
@@ -531,6 +578,8 @@ class OpsPilotApp {
             route: message.route || null,
             timing: message.timing || null,
             traceSummary: message.traceSummary || null,
+            requestMeta: message.requestMeta || null,
+            requestError: message.requestError || null,
         };
     }
 
@@ -543,6 +592,8 @@ class OpsPilotApp {
             route: message.route || null,
             timing: message.timing || null,
             traceSummary: message.traceSummary || null,
+            requestMeta: message.requestMeta || null,
+            requestError: message.requestError || null,
         };
     }
 
@@ -550,6 +601,8 @@ class OpsPilotApp {
         this.sessionId = this.generateSessionId();
         this.currentChatHistory = [];
         this.activeTrace = this.createIdleTrace();
+        this.showFullChatHistory = false;
+        this.cancelPendingMessageRenders();
         this.updateWelcomeState();
         this.renderChatMessages();
         this.renderTracePanel();
@@ -571,6 +624,7 @@ class OpsPilotApp {
             this.sessionId = sessionId;
             this.currentChatHistory = cached.messages.map((message) => this.normalizeLocalMessage(message));
             this.activeTrace = this.pickLatestTrace(this.currentChatHistory);
+            this.showFullChatHistory = false;
             this.updateWelcomeState();
             this.renderChatMessages();
             this.renderTracePanel();
@@ -603,6 +657,7 @@ class OpsPilotApp {
             this.sessionId = sessionId;
             this.currentChatHistory = mergedMessages.map((message) => this.normalizeLocalMessage(message));
             this.activeTrace = this.pickLatestTrace(this.currentChatHistory);
+            this.showFullChatHistory = false;
             this.updateWelcomeState();
             this.renderChatMessages();
             this.renderTracePanel();
@@ -634,6 +689,8 @@ class OpsPilotApp {
                 normalized.timing = localMessage.timing || null;
                 normalized.traceSummary = localMessage.traceSummary || null;
                 normalized.timestamp = localMessage.timestamp || normalized.timestamp;
+                normalized.requestMeta = localMessage.requestMeta || null;
+                normalized.requestError = localMessage.requestError || null;
             }
 
             return normalized;
@@ -650,6 +707,7 @@ class OpsPilotApp {
         this.chatHistories.sort((left, right) => {
             return new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime();
         });
+        this.pruneDeletingSessionIds();
         this.saveChatHistories();
     }
 
@@ -687,15 +745,23 @@ class OpsPilotApp {
             return;
         }
 
+        if (this.isSessionDeleting(sessionId)) {
+            return;
+        }
+
+        this.deletingSessionIds.add(sessionId);
+        this.renderChatHistory();
+
         try {
             const response = await this.apiFetch(`/sessions/${sessionId}`, {
                 method: "DELETE",
             });
-            if (!response.ok) {
+            if (!response.ok && response.status !== 404) {
                 throw new Error(await this.extractErrorMessage(response));
             }
 
             this.chatHistories = this.chatHistories.filter((session) => session.id !== sessionId);
+            this.deletingSessionIds.delete(sessionId);
             this.saveChatHistories();
 
             if (this.sessionId === sessionId) {
@@ -706,9 +772,24 @@ class OpsPilotApp {
 
             this.showNotification("会话已删除", "success");
         } catch (error) {
+            this.deletingSessionIds.delete(sessionId);
+            this.renderChatHistory();
             console.error("删除会话失败:", error);
             this.showNotification(error.message || "删除会话失败", "error");
         }
+    }
+
+    isSessionDeleting(sessionId) {
+        return Boolean(sessionId) && this.deletingSessionIds.has(sessionId);
+    }
+
+    pruneDeletingSessionIds() {
+        const activeSessionIds = new Set(this.chatHistories.map((session) => session.id));
+        this.deletingSessionIds.forEach((sessionId) => {
+            if (!activeSessionIds.has(sessionId)) {
+                this.deletingSessionIds.delete(sessionId);
+            }
+        });
     }
 
     renderChatHistory() {
@@ -725,10 +806,13 @@ class OpsPilotApp {
         this.chatHistoryList.innerHTML = this.chatHistories
             .map((session) => {
                 const activeClass = session.id === this.sessionId ? " active" : "";
+                const deleting = this.isSessionDeleting(session.id);
+                const deletingClass = deleting ? " deleting" : "";
+                const deleteTitle = deleting ? "正在删除会话" : "删除会话";
                 const updatedAt = session.updatedAt ? this.formatDateTime(session.updatedAt, { withDate: true, withSeconds: false }) : "刚刚";
                 const countLabel = session.messageCount ? `${session.messageCount} 条消息` : "待继续";
                 return `
-                    <div class="history-item${activeClass}" data-session-id="${this.escapeHtml(session.id)}">
+                    <div class="history-item${activeClass}${deletingClass}" data-session-id="${this.escapeHtml(session.id)}">
                         <div class="history-item-copy">
                             <div class="history-item-title">${this.escapeHtml(session.title || "新对话")}</div>
                             <div class="history-item-meta">${this.escapeHtml(updatedAt)} · ${this.escapeHtml(countLabel)}</div>
@@ -742,16 +826,87 @@ class OpsPilotApp {
                 `;
             })
             .join("");
+
+        this.chatHistoryList.querySelectorAll(".history-item-delete").forEach((button) => {
+            const deleting = this.isSessionDeleting(button.dataset.sessionId);
+            const title = deleting ? "正在删除会话" : "删除会话";
+            button.disabled = deleting;
+            button.setAttribute("aria-disabled", String(deleting));
+            button.title = title;
+            button.setAttribute("aria-label", title);
+        });
     }
 
     renderChatMessages() {
+        this.cancelPendingMessageRenders();
         this.chatMessages.innerHTML = "";
         this.currentChatHistory.forEach((message) => {
+            delete message._ui;
+            delete message._traceRefs;
+            delete message._pendingHighlight;
+        });
+
+        const startIndex = this.getChatRenderStartIndex();
+        if (startIndex > 0) {
+            this.chatMessages.appendChild(this.createMessageHistoryGate(startIndex));
+        }
+
+        this.currentChatHistory.slice(startIndex).forEach((message) => {
             const element = this.createMessageElement(message);
             this.chatMessages.appendChild(element);
         });
         this.updateWelcomeState();
         this.scrollChatToBottom(true);
+    }
+
+    getChatRenderStartIndex(length = this.currentChatHistory.length) {
+        if (this.showFullChatHistory || length <= this.chatRenderLimit) {
+            return 0;
+        }
+        return Math.max(0, length - this.chatRenderLimit);
+    }
+
+    canAppendChatMessages(previousLength, nextLength = this.currentChatHistory.length) {
+        return this.getChatRenderStartIndex(previousLength) === this.getChatRenderStartIndex(nextLength);
+    }
+
+    appendChatMessages(previousLength) {
+        if (!this.canAppendChatMessages(previousLength)) {
+            this.renderChatMessages();
+            return;
+        }
+
+        const startIndex = Math.max(previousLength, this.getChatRenderStartIndex());
+        const pendingMessages = this.currentChatHistory.slice(startIndex);
+        if (!pendingMessages.length) {
+            this.renderChatMessages();
+            return;
+        }
+
+        pendingMessages.forEach((message) => {
+            const element = this.createMessageElement(message);
+            this.chatMessages.appendChild(element);
+        });
+        this.updateWelcomeState();
+        this.scrollChatToBottom(true);
+    }
+
+    createMessageHistoryGate(hiddenCount) {
+        const gate = document.createElement("div");
+        gate.className = "message-history-gate";
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "text-link-btn message-history-gate-btn";
+        button.textContent = `展开更早的 ${hiddenCount} 条消息`;
+        button.addEventListener("click", () => {
+            this.showFullChatHistory = true;
+            this.renderChatMessages();
+            this.chatMessages.scrollTop = 0;
+        });
+
+        gate.appendChild(button);
+        return gate;
     }
 
     createMessageElement(message) {
@@ -840,6 +995,21 @@ class OpsPilotApp {
         timing.className = "message-timing";
         wrapper.appendChild(timing);
 
+        let actions = null;
+        let retryButton = null;
+        if (message.role === "assistant") {
+            actions = document.createElement("div");
+            actions.className = "message-actions hidden";
+
+            retryButton = document.createElement("button");
+            retryButton.type = "button";
+            retryButton.className = "text-link-btn message-retry-btn";
+            retryButton.textContent = "重试";
+            retryButton.addEventListener("click", () => this.retryAssistantMessage(message));
+            actions.appendChild(retryButton);
+            wrapper.appendChild(actions);
+        }
+
         root.appendChild(wrapper);
 
         message._ui = {
@@ -848,13 +1018,17 @@ class OpsPilotApp {
             content,
             time,
             timing,
+            actions,
+            retryButton,
+            lastRenderedContent: null,
+            needsHighlight: false,
         };
 
         this.updateMessageElement(message);
         return root;
     }
 
-    updateMessageElement(message) {
+    updateMessageElement(message, options = {}) {
         if (!message._ui) {
             return;
         }
@@ -868,8 +1042,16 @@ class OpsPilotApp {
             const assistantText = message.content && message.content.trim()
                 ? message.content
                 : "正在组织回答...";
-            message._ui.content.innerHTML = this.renderMarkdown(assistantText);
-            this.highlightCodeBlocks(message._ui.content);
+            if (message._ui.lastRenderedContent !== assistantText) {
+                message._ui.content.innerHTML = this.renderMarkdown(assistantText);
+                message._ui.lastRenderedContent = assistantText;
+                message._ui.needsHighlight = true;
+            }
+            const shouldHighlight = options.highlight ?? (!inProgress && message._ui.needsHighlight);
+            if (shouldHighlight) {
+                this.highlightCodeBlocks(message._ui.content);
+                message._ui.needsHighlight = false;
+            }
         } else {
             message._ui.content.textContent = message.content || "";
         }
@@ -919,6 +1101,12 @@ class OpsPilotApp {
                     .join("");
             }
         }
+
+        if (message._ui.actions && message._ui.retryButton) {
+            const showRetry = Boolean(message.requestError && message.requestMeta);
+            message._ui.actions.classList.toggle("hidden", !showRetry);
+            message._ui.retryButton.disabled = this.isStreaming;
+        }
     }
 
     updateWelcomeState() {
@@ -946,6 +1134,9 @@ class OpsPilotApp {
         const hasText = Boolean(this.messageInput.value.trim());
         this.sendButton.disabled = this.isStreaming || !hasText;
         this.toolsBtn.disabled = this.isStreaming;
+        this.chatMessages.querySelectorAll(".message-retry-btn").forEach((button) => {
+            button.disabled = this.isStreaming;
+        });
     }
 
     setMode(mode) {
@@ -957,7 +1148,9 @@ class OpsPilotApp {
     updateModeUI() {
         this.currentModeText.textContent = this.currentMode === "stream" ? "流式" : "快速";
         this.modeItems.forEach((item) => {
-            item.classList.toggle("active", item.dataset.mode === this.currentMode);
+            const active = item.dataset.mode === this.currentMode;
+            item.classList.toggle("active", active);
+            item.setAttribute("aria-selected", String(active));
         });
     }
 
@@ -981,13 +1174,19 @@ class OpsPilotApp {
         const userMessage = this.createUserMessage(question);
         const assistantMessage = this.createAssistantMessage(
             this.currentMode === "stream" ? "流式对话链路" : "问答链路",
-            question
+            question,
+            {
+                kind: this.currentMode === "stream" ? "stream-chat" : "quick-chat",
+                label: this.currentMode === "stream" ? "流式对话链路" : "问答链路",
+                question,
+            }
         );
 
+        const previousLength = this.currentChatHistory.length;
         this.currentChatHistory.push(userMessage);
         this.currentChatHistory.push(assistantMessage);
         this.persistCurrentSession(question);
-        this.renderChatMessages();
+        this.appendChatMessages(previousLength);
         this.setActiveTrace(assistantMessage.traceSummary);
 
         this.isStreaming = true;
@@ -1010,6 +1209,7 @@ class OpsPilotApp {
 
     async sendQuickQuestion(question, assistantMessage) {
         const trace = assistantMessage.traceSummary;
+        assistantMessage.requestError = null;
         this.addTraceStep(trace, this.createTraceStep("请求已发送", `问题：${question}`, { phase: "request" }));
 
         try {
@@ -1039,9 +1239,11 @@ class OpsPilotApp {
             assistantMessage.timestamp = data.timing?.assistant_completed_at || new Date().toISOString();
             assistantMessage.intent = data.route?.intent || null;
             assistantMessage.route = data.route?.route || null;
+            assistantMessage.requestError = null;
             this.applyQuickTrace(trace, data.route || {}, data.timing || null);
             this.markTraceCompleted(trace, data.timing || null);
-            this.updateMessageElement(assistantMessage);
+            this.cancelPendingMessageRender(assistantMessage);
+            this.updateMessageElement(assistantMessage, { highlight: true });
             this.setActiveTrace(trace);
         } catch (error) {
             this.handleRequestError(assistantMessage, error, trace);
@@ -1053,6 +1255,7 @@ class OpsPilotApp {
         trace.intent = route.intent || trace.intent;
         trace.reason = route.reason || trace.reason;
         trace.label = this.traceIntentLabel(route.intent || trace.intent);
+        trace.timing = timing ? { ...(trace.timing || {}), ...timing } : trace.timing;
         trace.steps = [];
 
         this.addTraceStep(
@@ -1066,7 +1269,12 @@ class OpsPilotApp {
 
         if (route.trace) {
             const retrieval = route.trace;
+            const retrievalDurationMs = (retrieval.dense_latency_ms || 0) + (retrieval.sparse_latency_ms || 0) + (retrieval.rerank_latency_ms || 0);
             trace.retrieval = retrieval;
+            trace.timing = {
+                ...(trace.timing || {}),
+                retrieval_duration_ms: retrievalDurationMs,
+            };
             this.addTraceStep(
                 trace,
                 this.createTraceStep(
@@ -1075,7 +1283,7 @@ class OpsPilotApp {
                     {
                         phase: "retrieval",
                         status: "success",
-                        durationMs: (retrieval.dense_latency_ms || 0) + (retrieval.sparse_latency_ms || 0) + (retrieval.rerank_latency_ms || 0),
+                        durationMs: retrievalDurationMs,
                     }
                 )
             );
@@ -1104,6 +1312,7 @@ class OpsPilotApp {
 
     async sendStreamQuestion(question, assistantMessage) {
         const trace = assistantMessage.traceSummary;
+        assistantMessage.requestError = null;
         try {
             const response = await this.apiFetch("/chat_stream", {
                 method: "POST",
@@ -1128,7 +1337,8 @@ class OpsPilotApp {
                 assistantMessage.timing = fallbackTiming;
                 assistantMessage.timestamp = fallbackTiming.assistant_completed_at;
                 this.markTraceCompleted(trace, fallbackTiming);
-                this.updateMessageElement(assistantMessage);
+                this.cancelPendingMessageRender(assistantMessage);
+                this.updateMessageElement(assistantMessage, { highlight: true });
             }
         } catch (error) {
             this.handleRequestError(assistantMessage, error, trace);
@@ -1159,6 +1369,11 @@ class OpsPilotApp {
 
         if (type === "search_results") {
             trace.retrieval = data || null;
+            trace.timing = {
+                ...(trace.timing || {}),
+                retrieval_completed_at: data?.timestamp || new Date().toISOString(),
+                retrieval_duration_ms: (data?.dense_latency_ms || 0) + (data?.sparse_latency_ms || 0) + (data?.rerank_latency_ms || 0),
+            };
             this.addTraceStep(
                 trace,
                 this.createTraceStep(
@@ -1235,8 +1450,7 @@ class OpsPilotApp {
                     assistant_started_at: new Date().toISOString(),
                 };
             }
-            this.updateMessageElement(assistantMessage);
-            this.scrollChatToBottom();
+            this.scheduleMessageRender(assistantMessage, { scroll: true });
             return;
         }
 
@@ -1246,12 +1460,19 @@ class OpsPilotApp {
                 assistant_started_at: data?.assistant_started_at || assistantMessage.timing?.assistant_started_at || new Date().toISOString(),
                 assistant_completed_at: data?.assistant_completed_at || new Date().toISOString(),
                 duration_ms: data?.duration_ms || null,
+                retrieval_completed_at: data?.retrieval_completed_at || trace.timing?.retrieval_completed_at || null,
+                retrieval_duration_ms: data?.retrieval_duration_ms ?? trace.timing?.retrieval_duration_ms ?? null,
+                llm_started_at: data?.llm_started_at || null,
+                llm_duration_ms: data?.llm_duration_ms ?? null,
+                first_chunk_at: data?.first_chunk_at || null,
+                time_to_first_chunk_ms: data?.time_to_first_chunk_ms ?? null,
             };
             if (data?.answer && data.answer.length >= (assistantMessage.content || "").length) {
                 assistantMessage.content = data.answer;
             }
             assistantMessage.intent = data?.intent || trace.intent || null;
             assistantMessage.route = data?.intent || trace.intent || null;
+            assistantMessage.requestError = null;
             trace.label = this.traceIntentLabel(data?.intent || trace.intent);
             assistantMessage.timing = timing;
             assistantMessage.timestamp = timing.assistant_completed_at;
@@ -1264,7 +1485,8 @@ class OpsPilotApp {
                 })
             );
             this.markTraceCompleted(trace, timing);
-            this.updateMessageElement(assistantMessage);
+            this.cancelPendingMessageRender(assistantMessage);
+            this.updateMessageElement(assistantMessage, { highlight: true });
             this.setActiveTrace(trace);
             return;
         }
@@ -1289,41 +1511,23 @@ class OpsPilotApp {
         const userMessage = this.createUserMessage(prompt);
         const assistantMessage = this.createAssistantMessage("AIOps 诊断链路", prompt);
 
+        assistantMessage.requestMeta = {
+            kind: "aiops",
+            label: "AIOps 诊断链路",
+            question: prompt,
+        };
+        const previousLength = this.currentChatHistory.length;
         this.currentChatHistory.push(userMessage);
         this.currentChatHistory.push(assistantMessage);
         this.persistCurrentSession(prompt);
-        this.renderChatMessages();
+        this.appendChatMessages(previousLength);
         this.setActiveTrace(assistantMessage.traceSummary);
 
         this.isStreaming = true;
         this.updateSendButtonState();
 
         try {
-            const response = await this.apiFetch("/aiops", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "text/event-stream",
-                },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(await this.extractErrorMessage(response));
-            }
-
-            await this.consumeSseStream(response, (payload) => this.handleAiOpsPayload(payload, assistantMessage, assistantMessage.traceSummary));
-
-            if (!assistantMessage.timing) {
-                const fallbackTiming = this.buildFallbackTiming(assistantMessage.traceSummary);
-                assistantMessage.timing = fallbackTiming;
-                assistantMessage.timestamp = fallbackTiming.assistant_completed_at;
-                this.markTraceCompleted(assistantMessage.traceSummary, fallbackTiming);
-                this.updateMessageElement(assistantMessage);
-            }
-
+            await this.runAiOpsRequest(assistantMessage);
             await this.syncSessionsFromBackend();
         } catch (error) {
             this.handleRequestError(assistantMessage, error, assistantMessage.traceSummary);
@@ -1393,7 +1597,8 @@ class OpsPilotApp {
         if (type === "report") {
             if (payload.report) {
                 assistantMessage.content = payload.report;
-                this.updateMessageElement(assistantMessage);
+                assistantMessage.requestError = null;
+                this.updateMessageElement(assistantMessage, { highlight: true });
                 this.scrollChatToBottom();
             }
             this.addTraceStep(
@@ -1410,11 +1615,12 @@ class OpsPilotApp {
         if (type === "complete") {
             const report = payload?.diagnosis?.report || assistantMessage.content || "AIOps 诊断已完成。";
             assistantMessage.content = report;
+            assistantMessage.requestError = null;
             const timing = this.buildFallbackTiming(trace);
             assistantMessage.timing = timing;
             assistantMessage.timestamp = timing.assistant_completed_at;
             this.markTraceCompleted(trace, timing);
-            this.updateMessageElement(assistantMessage);
+            this.updateMessageElement(assistantMessage, { highlight: true });
             this.setActiveTrace(trace);
             return;
         }
@@ -1473,6 +1679,62 @@ class OpsPilotApp {
         }
     }
 
+    scheduleMessageRender(message, options = {}) {
+        if (!message?._ui) {
+            return;
+        }
+        if (options.highlight) {
+            message._pendingHighlight = true;
+        }
+        this.pendingMessageRenders.add(message);
+        this.pendingScrollToBottom = this.pendingScrollToBottom || Boolean(options.scroll);
+        if (this.pendingMessageRenderFrame !== null) {
+            return;
+        }
+        this.pendingMessageRenderFrame = window.requestAnimationFrame(() => {
+            const queuedMessages = Array.from(this.pendingMessageRenders);
+            const shouldScroll = this.pendingScrollToBottom;
+            this.pendingMessageRenders.clear();
+            this.pendingMessageRenderFrame = null;
+            this.pendingScrollToBottom = false;
+
+            queuedMessages.forEach((queuedMessage) => {
+                const highlight = Boolean(queuedMessage._pendingHighlight);
+                delete queuedMessage._pendingHighlight;
+                this.updateMessageElement(queuedMessage, { highlight });
+            });
+
+            if (shouldScroll) {
+                this.scrollChatToBottom();
+            }
+        });
+    }
+
+    cancelPendingMessageRender(message) {
+        if (!message) {
+            return;
+        }
+        this.pendingMessageRenders.delete(message);
+        delete message._pendingHighlight;
+        if (!this.pendingMessageRenders.size && this.pendingMessageRenderFrame !== null) {
+            window.cancelAnimationFrame(this.pendingMessageRenderFrame);
+            this.pendingMessageRenderFrame = null;
+            this.pendingScrollToBottom = false;
+        }
+    }
+
+    cancelPendingMessageRenders() {
+        this.pendingMessageRenders.forEach((message) => {
+            delete message._pendingHighlight;
+        });
+        this.pendingMessageRenders.clear();
+        if (this.pendingMessageRenderFrame !== null) {
+            window.cancelAnimationFrame(this.pendingMessageRenderFrame);
+            this.pendingMessageRenderFrame = null;
+        }
+        this.pendingScrollToBottom = false;
+    }
+
     parseSseEvent(rawEvent) {
         const lines = rawEvent.split("\n");
         let event = "message";
@@ -1499,6 +1761,10 @@ class OpsPilotApp {
         console.error("请求失败:", error);
         const message = error?.message || "请求失败";
         assistantMessage.content = `本次请求未完成：${message}`;
+        assistantMessage.requestError = {
+            message,
+            occurredAt: new Date().toISOString(),
+        };
         const fallbackTiming = this.buildFallbackTiming(trace);
         assistantMessage.timing = fallbackTiming;
         assistantMessage.timestamp = fallbackTiming.assistant_completed_at;
@@ -1511,9 +1777,64 @@ class OpsPilotApp {
             })
         );
         this.markTraceCompleted(trace, fallbackTiming);
-        this.updateMessageElement(assistantMessage);
+        this.cancelPendingMessageRender(assistantMessage);
+        this.updateMessageElement(assistantMessage, { highlight: false });
         this.setActiveTrace(trace);
         this.showNotification(message, "error");
+    }
+
+    async retryAssistantMessage(message) {
+        if (this.isStreaming || !message?.requestMeta) {
+            return;
+        }
+        if (!this.ensureAuthenticated()) {
+            return;
+        }
+
+        const meta = message.requestMeta;
+        if (meta.kind === "aiops" && !this.ensureOperatorPermission("AIOps 诊断")) {
+            return;
+        }
+        const startedAt = new Date().toISOString();
+        this.cancelPendingMessageRender(message);
+        message.content = "";
+        message.timestamp = null;
+        message.intent = null;
+        message.route = null;
+        message.timing = null;
+        message.requestError = null;
+        message.traceSummary = this.createTraceSummary(meta.label || "执行链路", startedAt);
+        message.traceSummary.steps.push(
+            this.createTraceStep("重试请求", `已再次发起：${meta.question || "当前请求"}`, {
+                phase: "request",
+                timestamp: startedAt,
+            })
+        );
+        if (message._ui) {
+            message._ui.lastRenderedContent = null;
+            message._ui.needsHighlight = false;
+        }
+        this.updateMessageElement(message, { highlight: false });
+        this.setActiveTrace(message.traceSummary);
+
+        this.isStreaming = true;
+        this.updateSendButtonState();
+
+        try {
+            if (meta.kind === "aiops") {
+                await this.runAiOpsRequest(message);
+            } else if (meta.kind === "stream-chat") {
+                await this.sendStreamQuestion(meta.question, message);
+            } else {
+                await this.sendQuickQuestion(meta.question, message);
+            }
+            await this.syncSessionsFromBackend();
+        } finally {
+            this.isStreaming = false;
+            this.updateSendButtonState();
+            this.persistCurrentSession(meta.question || "");
+            this.renderChatHistory();
+        }
     }
 
     createUserMessage(question) {
@@ -1528,7 +1849,7 @@ class OpsPilotApp {
         };
     }
 
-    createAssistantMessage(label, question) {
+    createAssistantMessage(label, question, requestMeta = null) {
         const trace = this.createTraceSummary(label, new Date().toISOString());
         trace.steps.push(this.createTraceStep("请求排队", `已接收问题：${question}`, {
             phase: "request",
@@ -1543,6 +1864,14 @@ class OpsPilotApp {
             route: null,
             timing: null,
             traceSummary: trace,
+            requestMeta: requestMeta
+                ? {
+                    kind: requestMeta.kind || "quick-chat",
+                    label: requestMeta.label || label,
+                    question: requestMeta.question || question,
+                }
+                : null,
+            requestError: null,
         };
     }
 
@@ -1552,6 +1881,7 @@ class OpsPilotApp {
             startedAt,
             completedAt: null,
             totalDurationMs: null,
+            timing: null,
             intent: null,
             reason: null,
             retrieval: null,
@@ -1611,6 +1941,12 @@ class OpsPilotApp {
         if (!trace) {
             return;
         }
+        trace.timing = timing
+            ? {
+                ...(trace.timing || {}),
+                ...timing,
+            }
+            : (trace.timing || null);
         trace.startedAt = timing?.request_started_at || trace.startedAt;
         trace.completedAt = timing?.assistant_completed_at || trace.completedAt || new Date().toISOString();
         trace.totalDurationMs = Number.isFinite(timing?.duration_ms)
@@ -1696,6 +2032,9 @@ class OpsPilotApp {
         ];
 
         if (trace.retrieval) {
+            const retrievalDurationMs = Number.isFinite(trace.timing?.retrieval_duration_ms)
+                ? trace.timing.retrieval_duration_ms
+                : (trace.retrieval.dense_latency_ms || 0) + (trace.retrieval.sparse_latency_ms || 0) + (trace.retrieval.rerank_latency_ms || 0);
             cards.push({
                 label: "检索命中",
                 value: `dense ${trace.retrieval.dense_hits || 0} / rerank ${trace.retrieval.rerank_hits || 0}`,
@@ -1705,6 +2044,24 @@ class OpsPilotApp {
                 value: Array.isArray(trace.retrieval.final_sources) && trace.retrieval.final_sources.length
                     ? this.truncate(trace.retrieval.final_sources.join(", "), 38)
                     : "--",
+            });
+            cards.push({
+                label: "检索耗时",
+                value: Number.isFinite(retrievalDurationMs) ? this.formatDuration(retrievalDurationMs) : "--",
+            });
+        }
+
+        if (Number.isFinite(trace.timing?.llm_duration_ms)) {
+            cards.push({
+                label: "模型耗时",
+                value: this.formatDuration(trace.timing.llm_duration_ms),
+            });
+        }
+
+        if (Number.isFinite(trace.timing?.time_to_first_chunk_ms)) {
+            cards.push({
+                label: "首段可见",
+                value: this.formatDuration(trace.timing.time_to_first_chunk_ms),
             });
         }
 
@@ -1743,7 +2100,14 @@ class OpsPilotApp {
     }
 
     renderTraceEntry(step) {
-        const time = step.timestamp ? this.formatDateTime(step.timestamp, { withDate: false, withSeconds: true }) : "--";
+        const timeParts = [];
+        if (step.timestamp) {
+            timeParts.push(this.formatDateTime(step.timestamp, { withDate: false, withSeconds: true }));
+        }
+        if (Number.isFinite(step.duration_ms)) {
+            timeParts.push(this.formatDuration(step.duration_ms));
+        }
+        const time = timeParts.join(" 路 ") || "--";
         const detail = this.escapeHtml(step.detail || "").replace(/\n/g, "<br>");
         return `
             <div class="message-trace-entry ${this.escapeHtml(step.status || "info")}">
@@ -1960,6 +2324,37 @@ class OpsPilotApp {
         }
     }
 
+    async runAiOpsRequest(assistantMessage) {
+        assistantMessage.requestError = null;
+        const response = await this.apiFetch("/aiops", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "text/event-stream",
+            },
+            body: JSON.stringify({
+                session_id: this.sessionId,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(await this.extractErrorMessage(response));
+        }
+
+        await this.consumeSseStream(
+            response,
+            (payload) => this.handleAiOpsPayload(payload, assistantMessage, assistantMessage.traceSummary)
+        );
+
+        if (!assistantMessage.timing) {
+            const fallbackTiming = this.buildFallbackTiming(assistantMessage.traceSummary);
+            assistantMessage.timing = fallbackTiming;
+            assistantMessage.timestamp = fallbackTiming.assistant_completed_at;
+            this.markTraceCompleted(assistantMessage.traceSummary, fallbackTiming);
+            this.updateMessageElement(assistantMessage, { highlight: true });
+        }
+    }
+
     showNotification(message, type = "info") {
         const notification = document.createElement("div");
         notification.className = "notification";
@@ -1983,11 +2378,13 @@ class OpsPilotApp {
         if (!content) {
             return "";
         }
-        if (typeof marked === "undefined") {
+        if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
             return this.escapeHtml(content).replace(/\n/g, "<br>");
         }
         try {
-            return marked.parse(content);
+            return DOMPurify.sanitize(marked.parse(content), {
+                USE_PROFILES: { html: true },
+            });
         } catch (error) {
             console.error("Markdown 渲染失败:", error);
             return this.escapeHtml(content).replace(/\n/g, "<br>");
@@ -1999,8 +2396,12 @@ class OpsPilotApp {
             return;
         }
         container.querySelectorAll("pre code").forEach((block) => {
+            if (block.dataset.highlighted === "true") {
+                return;
+            }
             try {
                 hljs.highlightElement(block);
+                block.dataset.highlighted = "true";
             } catch (error) {
                 console.error("代码高亮失败:", error);
             }

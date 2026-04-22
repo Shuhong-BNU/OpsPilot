@@ -57,13 +57,29 @@ class ChatService:
         assistant_started_at: str,
         assistant_completed_at: str,
         duration_ms: int,
+        **extra_fields: Any,
     ) -> dict[str, Any]:
-        return {
+        payload = {
             "request_started_at": request_started_at,
             "assistant_started_at": assistant_started_at,
             "assistant_completed_at": assistant_completed_at,
             "duration_ms": duration_ms,
         }
+        for key, value in extra_fields.items():
+            if value is not None:
+                payload[key] = value
+        return payload
+
+    @staticmethod
+    def _duration_between(started_at: str | None, completed_at: str | None) -> int | None:
+        if not started_at or not completed_at:
+            return None
+        try:
+            started = datetime.fromisoformat(started_at)
+            completed = datetime.fromisoformat(completed_at)
+        except ValueError:
+            return None
+        return max(0, int((completed - started).total_seconds() * 1000))
 
     def _make_trace_step(
         self,
@@ -176,6 +192,35 @@ class ChatService:
                 assistant_started_at = iso_utc_now()
             return assistant_started_at
 
+        stream_timing: dict[str, Any] = {
+            "retrieval_completed_at": None,
+            "retrieval_duration_ms": None,
+            "llm_started_at": None,
+            "llm_duration_ms": None,
+            "first_chunk_at": None,
+            "time_to_first_chunk_ms": None,
+        }
+
+        async def emit_answer(answer_text: str, first_chunk_detail: str) -> AsyncGenerator[dict[str, Any], None]:
+            first_chunk_emitted = False
+            async for chunk in self._yield_text(answer_text):
+                if not first_chunk_emitted:
+                    first_chunk_emitted = True
+                    first_chunk_at = iso_utc_now()
+                    stream_timing["first_chunk_at"] = first_chunk_at
+                    stream_timing["time_to_first_chunk_ms"] = self._duration_between(
+                        stream_timing.get("llm_started_at"),
+                        first_chunk_at,
+                    )
+                    yield self._make_trace_step(
+                        "首段输出",
+                        first_chunk_detail,
+                        status="success",
+                        phase="respond",
+                        duration_ms=stream_timing.get("time_to_first_chunk_ms"),
+                    )
+                yield chunk
+
         answer = ""
 
         if intent.intent == INTENT_UNSUPPORTED:
@@ -187,7 +232,7 @@ class ChatService:
                 phase="guardrail",
             )
             answer = "这个请求超出了 OpsPilot 的职责范围。我更适合处理运维知识问答、告警分析和排障建议。"
-            async for chunk in self._yield_text(answer):
+            async for chunk in emit_answer(answer, "模型结果已返回，开始向界面输出内容。"):
                 yield chunk
         elif intent.intent == INTENT_AIOPS:
             ensure_assistant_started()
@@ -246,7 +291,7 @@ class ChatService:
                 status="success",
                 phase="respond",
             )
-            async for chunk in self._yield_text(answer):
+            async for chunk in emit_answer(answer, "模型结果已返回，开始向界面输出内容。"):
                 yield chunk
         elif intent.intent == INTENT_KNOWLEDGE_QA:
             ensure_assistant_started()
@@ -259,6 +304,10 @@ class ChatService:
             retrieval_started_at = perf_counter()
             docs, trace = retrieval_service.hybrid_search(question)
             retrieval_duration_ms = int((perf_counter() - retrieval_started_at) * 1000)
+            if retrieval_duration_ms <= 0:
+                retrieval_duration_ms = trace.dense_latency_ms + trace.sparse_latency_ms + trace.rerank_latency_ms
+            stream_timing["retrieval_completed_at"] = iso_utc_now()
+            stream_timing["retrieval_duration_ms"] = retrieval_duration_ms
             yield {"type": "search_results", "data": {**trace.to_dict(), "timestamp": iso_utc_now()}}
             yield self._make_trace_step(
                 "混合检索",
@@ -276,8 +325,17 @@ class ChatService:
                 "已完成文档召回与重排，正在生成回答。",
                 phase="generation",
             )
+            llm_started_at = iso_utc_now()
+            llm_started_perf = perf_counter()
+            stream_timing["llm_started_at"] = llm_started_at
+            yield self._make_trace_step(
+                "LLM 调用开始",
+                "已完成文档召回与重排，正在请求模型生成回答。",
+                phase="generation",
+            )
             answer = await self._answer_with_context(question, session_id, user["role"], docs, trace)
-            async for chunk in self._yield_text(answer):
+            stream_timing["llm_duration_ms"] = int((perf_counter() - llm_started_perf) * 1000)
+            async for chunk in emit_answer(answer, "模型结果已返回，开始向界面输出内容。"):
                 yield chunk
         else:
             ensure_assistant_started()
@@ -287,7 +345,7 @@ class ChatService:
                 phase="generation",
             )
             answer = await self._answer_direct(question)
-            async for chunk in self._yield_text(answer):
+            async for chunk in emit_answer(answer, "模型结果已返回，开始向界面输出内容。"):
                 yield chunk
 
         assistant_completed_at = iso_utc_now()
@@ -307,6 +365,12 @@ class ChatService:
                     assistant_started_at=assistant_started_at or assistant_completed_at,
                     assistant_completed_at=assistant_completed_at,
                     duration_ms=duration_ms,
+                    retrieval_completed_at=stream_timing.get("retrieval_completed_at"),
+                    retrieval_duration_ms=stream_timing.get("retrieval_duration_ms"),
+                    llm_started_at=stream_timing.get("llm_started_at"),
+                    llm_duration_ms=stream_timing.get("llm_duration_ms"),
+                    first_chunk_at=stream_timing.get("first_chunk_at"),
+                    time_to_first_chunk_ms=stream_timing.get("time_to_first_chunk_ms"),
                 ),
             },
         }
@@ -362,6 +426,7 @@ class ChatService:
                 allowed_mcp_tools=set(),
             )
         )
+        started_at = perf_counter()
         try:
             messages = [
                 SystemMessage(
@@ -374,19 +439,25 @@ class ChatService:
             ]
             result = await self._get_model().ainvoke(messages)
             answer = result.content if hasattr(result, "content") else str(result)
+            total_duration_ms = trace.dense_latency_ms + trace.sparse_latency_ms + trace.rerank_latency_ms + int(
+                (perf_counter() - started_at) * 1000
+            )
             session_service.finish_workflow_run(
                 run_id,
                 status="completed",
                 result_summary=answer[:500],
-                duration_ms=trace.dense_latency_ms + trace.sparse_latency_ms + trace.rerank_latency_ms,
+                duration_ms=total_duration_ms,
             )
             return answer
         except Exception as exc:
+            total_duration_ms = trace.dense_latency_ms + trace.sparse_latency_ms + trace.rerank_latency_ms + int(
+                (perf_counter() - started_at) * 1000
+            )
             session_service.finish_workflow_run(
                 run_id,
                 status="failed",
                 result_summary=str(exc),
-                duration_ms=trace.dense_latency_ms + trace.sparse_latency_ms + trace.rerank_latency_ms,
+                duration_ms=total_duration_ms,
             )
             raise
         finally:

@@ -9,153 +9,103 @@
 [![Milvus](https://img.shields.io/badge/Milvus-Vector%20DB-00B388.svg)](https://milvus.io/)
 [![Pytest](https://img.shields.io/badge/Tested%20with-pytest-0A9EDC.svg)](https://pytest.org/)
 
-OpsPilot is an Agent engineering project for enterprise operations scenarios. It combines intent routing, hybrid retrieval, MCP tool orchestration, and persistent workflow state to build an end-to-end troubleshooting assistant rather than a simple chat demo.
+OpsPilot brings conversational assistance, knowledge retrieval, AIOps diagnosis, and MCP-backed tool orchestration into one operator-facing workspace. It works well both as a runnable operations Agent example and as a demo project for retrieval, workflow orchestration, access control, and runtime visibility.
 
-## Project Positioning
+## ✨ Highlights
 
-OpsPilot is best framed as:
+- 🤖 **Chat Workspace**: standard responses, streaming output, session history, and execution trace in one UI
+- 🧭 **Intent Routing**: switches across `smalltalk / simple_qa / knowledge_qa / aiops_diagnosis / unsupported`
+- 📚 **Hybrid Retrieval**: combines `Milvus dense recall + SQLite FTS5 sparse recall + RRF + rerank`
+- 🔧 **AIOps Diagnosis**: uses `Plan-Execute-Replan` to generate structured troubleshooting steps
+- 🔌 **MCP Integration**: connects log and monitoring tools while persisting tool-call records
+- 💾 **Persistent State**: stores sessions, messages, workflows, and tool logs in SQLite
+- 🔐 **Role Boundaries**: `viewer / operator / admin` roles keep sensitive actions explicit
+- 🪟 **Status Panel**: exposes model config, dependency readiness, access URLs, and service health in the frontend
+- 🧪 **Critical Path Tests**: covers auth, retrieval, authorization boundaries, and system status APIs
 
-> an engineering-oriented operations assistant prototype with clear system boundaries.
+## 🧱 Architecture Layers
 
-It emphasizes:
+- 🖥️ **Frontend**: `static/` provides the single-page workspace, streaming renderer, trace panel, and system-status panel
+- 🌐 **API Layer**: `app/api/` exposes auth, chat, AIOps, upload, sessions, health, metrics, and runtime-status endpoints
+- 🧠 **Service Layer**: `app/services/` implements routing, retrieval, workflow orchestration, persistence, and metrics
+- 🤝 **Agent Layer**: `app/agent/` manages MCP connectivity and AIOps execution nodes
+- 🧰 **Tool Layer**: `app/tools/` defines callable tools such as retrieval and time helpers
+- 🗃️ **Data Layer**: SQLite stores structured state, Milvus stores vectors, and `aiops-docs/` provides demo knowledge
 
-- `intent routing`
-- `hybrid retrieval`
-- `workflow orchestration`
-- `persistent state`
-- `observability`
+## 🛠️ Tech Stack
 
-It does not overclaim:
+### ⚡ Quick View
 
-- a real production operations platform
-- full integration with enterprise ticketing systems
-- full production deployment of Prometheus / MySQL
-- a multi-agent platform
-- unverified efficiency or cost-saving metrics
+- **Framework**: FastAPI + LangChain + LangGraph
+- **LLM**: DashScope / Qwen
+- **Retrieval**: Milvus + SQLite FTS5 + RRF + rerank
+- **State Store**: SQLite
+- **Tool Protocol**: MCP / FastMCP
+- **Engineering**: pytest + ruff + black + mypy + Loguru
 
-## Core Features
+### 🧩 Detailed Stack
 
-- Rule-first intent routing across `smalltalk / simple_qa / knowledge_qa / aiops_diagnosis / unsupported`
-- Hybrid retrieval with `Milvus + SQLite FTS5 + RRF + lightweight reranking`
-- `Plan-Execute-Replan` workflow for AIOps diagnosis
-- MCP-based log and monitoring tool integration
-- Persistent session, message, workflow, and tool-call storage
-- JWT auth with `viewer / operator / admin` role boundaries
-- Lightweight metrics exposure through `/metrics`
-- Key-path tests for auth, intent routing, retrieval, and API authorization
+| Category | Technologies | Purpose |
+|---|---|---|
+| Web framework | FastAPI, Uvicorn, sse-starlette | REST APIs, SSE chat, streaming AIOps diagnosis |
+| LLM / Agent | LangChain, LangGraph, DashScope / Qwen, langchain-qwq | chat Agent, AIOps workflow, planning, tool orchestration |
+| Retrieval | Milvus, SQLite FTS5, RRF, lightweight rerank | dense recall, sparse recall, fusion, reranking |
+| Tool integration | MCP, FastMCP, langchain-mcp-adapters | log and monitoring tool integration |
+| State and data | SQLite | sessions, messages, workflows, tool logs, document chunks |
+| Engineering | pytest, pytest-cov, ruff, black, mypy, Loguru | testing, linting, formatting, logging |
 
-## Tech Stack
+## 🚀 Quick Start
 
-### Backend
-
-- `FastAPI`
-- `Pydantic v2`
-- `Uvicorn`
-- `SQLite`
-- `Loguru`
-
-### Agent / LLM / Retrieval
-
-- `LangChain`
-- `LangGraph`
-- `DashScope / Qwen`
-- `Milvus`
-- `SQLite FTS5`
-- `RRF`
-
-### Tooling and Engineering
-
-- `MCP`
-- `FastMCP`
-- `pytest`
-- `pytest-cov`
-- `ruff`
-- `black`
-- `mypy`
-
-## Architecture
-
-OpsPilot can be understood in five layers:
-
-1. Frontend interaction layer
-2. API access layer
-3. Orchestration layer
-4. Retrieval and tool layer
-5. Persistence and observability layer
-
-This makes it easier to explain the project as a coherent engineering loop instead of a collection of isolated demos.
-
-## Quick Start
-
-### Requirements
+### 🧰 Requirements
 
 - Python `3.11+`
 - Docker Desktop
-- DashScope API key for full LLM / embedding behavior
+- DashScope API key when you want real model and embedding behavior
 
-### 1. Clone the repository
+### 🐧 Linux / macOS
 
 ```bash
 git clone https://github.com/Shuhong-BNU/OpsPilot.git
 cd OpsPilot
-```
 
-### 2. Create `.env`
+cp .env.example .env
 
-Copy [`.env.example`](./.env.example) to `.env` and review:
-
-```env
-APP_NAME=OpsPilot
-JWT_SECRET=replace-with-a-secure-secret
-DASHSCOPE_API_KEY=your-api-key
-MILVUS_HOST=localhost
-MILVUS_PORT=19530
-```
-
-### 3. Install dependencies
-
-```bash
 python -m venv .venv
-```
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-```
-
-Linux / macOS:
-
-```bash
 source .venv/bin/activate
+
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-```
 
-### 4. Start the project
-
-Windows:
-
-```powershell
-.\start-windows.bat
-```
-
-Linux / macOS:
-
-```bash
 docker compose -f vector-database.yml up -d
 make start
 ```
 
-### 5. Open the app
+### 🪟 Windows PowerShell
 
-- Web UI: `http://localhost:9900`
-- API docs: `http://localhost:9900/docs`
-- Health check: `http://localhost:9900/health`
-- Metrics: `http://localhost:9900/metrics`
+```powershell
+git clone https://github.com/Shuhong-BNU/OpsPilot.git
+cd OpsPilot
 
-### Default demo accounts
+Copy-Item .env.example .env
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+
+.\start-windows.bat
+```
+
+Manual startup:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+
+docker compose -f vector-database.yml up -d
+.\.venv\Scripts\python.exe mcp_servers\cls_server.py
+.\.venv\Scripts\python.exe mcp_servers\monitor_server.py
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 9900
+```
+
+## 🔐 Demo Accounts
 
 | Role | Username | Password |
 |---|---|---|
@@ -163,127 +113,279 @@ make start
 | `operator` | `operator` | `operator123` |
 | `admin` | `admin` | `admin123` |
 
-## Project Structure
+## 🌐 Access Points
+
+- **Web UI**: `http://localhost:9900`
+- **API Docs**: `http://localhost:9900/docs`
+- **Health Check**: `http://localhost:9900/health`
+- **Metrics**: `http://localhost:9900/metrics`
+- **System Status API**: `GET /api/system/status`
+
+## 📡 API Overview
+
+| Function | Method | Path | Description |
+|---|---|---|---|
+| Login | `POST` | `/api/auth/login` | returns JWT and role |
+| Current user | `GET` | `/api/auth/me` | resolves login state |
+| Chat | `POST` | `/api/chat` | returns a full response after intent routing |
+| Streaming chat | `POST` | `/api/chat_stream` | SSE output with route / content / done |
+| Clear session | `POST` | `/api/chat/clear` | clears one session |
+| Session detail | `GET` | `/api/chat/session/{session_id}` | returns message history |
+| Session list | `GET` | `/api/sessions` | lists all sessions for the current user |
+| Delete session | `DELETE` | `/api/sessions/{session_id}` | deletes one session |
+| AIOps diagnosis | `POST` | `/api/aiops` | streaming diagnosis for `operator/admin` |
+| Upload document | `POST` | `/api/upload` | uploads and indexes a document |
+| Batch index | `POST` | `/api/index_directory` | indexes a directory |
+| System status | `GET` | `/api/system/status` | returns model, dependency, and access status |
+| Health check | `GET` | `/health` | checks API / Milvus / SQLite |
+| Metrics snapshot | `GET` | `/metrics` | returns JSON metrics |
+
+## 🗂️ Project Structure
+
+### 🧭 Directory Roles
+
+- `app/`: application core, including APIs, services, Agent modules, models, and tools
+- `aiops-docs/`: operations knowledge samples for retrieval and diagnosis demos
+- `mcp_servers/`: MCP servers for log and monitoring access
+- `static/`: single-page frontend workspace
+- `tests/`: service and API tests
+- `docs/assets/`: screenshot assets and screenshot maintenance notes
+- `data/`, `logs/`, `uploads/`, `volumes/`: runtime data, logs, uploaded files, and container volumes
+
+### 🧩 File-by-File Map
 
 ```text
 OpsPilot/
-├── app/                    # API, services, agent logic, models, tools
-├── aiops-docs/             # near-realistic operations knowledge samples
-├── mcp_servers/            # MCP log and monitor services
-├── static/                 # static frontend
-├── tests/                  # pytest cases
-├── .env.example            # environment template
-├── Makefile                # Linux / macOS commands
-├── start-windows.bat       # Windows start script
-├── stop-windows.bat        # Windows stop script
-├── vector-database.yml     # Milvus Docker Compose
-└── OpsPilot_interview_handbook.md
+├── app/                                      # Application core
+│   ├── __init__.py                           # Package init
+│   ├── main.py                               # FastAPI entrypoint, routes, static mount
+│   ├── config.py                             # app, model, retrieval, MCP, and metrics config
+│   ├── api/                                  # HTTP API layer
+│   │   ├── __init__.py                       # API package init
+│   │   ├── auth.py                           # login and current-user endpoints
+│   │   ├── chat.py                           # chat and streaming endpoints
+│   │   ├── aiops.py                          # streaming AIOps endpoint
+│   │   ├── file.py                           # upload and directory indexing endpoints
+│   │   ├── health.py                         # health-check endpoint
+│   │   ├── metrics.py                        # JSON / Prometheus metrics endpoint
+│   │   ├── sessions.py                       # session list, detail, delete endpoints
+│   │   ├── system.py                         # runtime status and dependency readiness endpoint
+│   │   └── dependencies.py                   # auth and role-based dependencies
+│   ├── services/                             # Business services
+│   │   ├── __init__.py                       # service package init
+│   │   ├── auth_service.py                   # default accounts, password validation, JWT
+│   │   ├── chat_service.py                   # chat entry and route dispatch
+│   │   ├── intent_service.py                 # intent routing and fallback classification
+│   │   ├── rag_agent_service.py              # RAG Agent and tool orchestration
+│   │   ├── aiops_service.py                  # AIOps workflow orchestration
+│   │   ├── retrieval_service.py              # hybrid retrieval, RRF, rerank, trace recording
+│   │   ├── session_service.py                # session, message, and workflow persistence
+│   │   ├── database_service.py               # SQLite setup, queries, FTS5 retrieval
+│   │   ├── metrics_service.py                # runtime metrics collection
+│   │   ├── runtime_status_service.py         # runtime status, model config, dependency aggregation
+│   │   ├── request_context_service.py        # request-context helpers
+│   │   ├── vector_store_manager.py           # Milvus VectorStore wrapper
+│   │   ├── vector_embedding_service.py       # DashScope embedding wrapper
+│   │   ├── vector_index_service.py           # file reading, chunking, indexing
+│   │   ├── vector_search_service.py          # vector search logic
+│   │   └── document_splitter_service.py      # Markdown / text splitting
+│   ├── agent/                                # Agent coordination layer
+│   │   ├── __init__.py                       # Agent package init
+│   │   ├── mcp_client.py                     # MultiServer MCP client
+│   │   └── aiops/                            # AIOps workflow nodes
+│   │       ├── __init__.py                   # AIOps node package init
+│   │       ├── planner.py                    # planning node
+│   │       ├── executor.py                   # tool execution node
+│   │       ├── replanner.py                  # replanning node
+│   │       ├── state.py                      # workflow state definition
+│   │       └── utils.py                      # helper utilities
+│   ├── models/                               # Pydantic models
+│   │   ├── __init__.py                       # model package init
+│   │   ├── auth.py                           # auth request and response models
+│   │   ├── request.py                        # chat and clear request models
+│   │   ├── response.py                       # common response models
+│   │   ├── aiops.py                          # AIOps request and response models
+│   │   ├── session.py                        # session response models
+│   │   └── document.py                       # document indexing models
+│   ├── tools/                                # callable Agent tools
+│   │   ├── __init__.py                       # tool package init
+│   │   ├── knowledge_tool.py                 # retrieval tool
+│   │   └── time_tool.py                      # time helper
+│   ├── core/                                 # low-level wrappers
+│   │   ├── __init__.py                       # core package init
+│   │   ├── llm_factory.py                    # LLM factory
+│   │   └── milvus_client.py                  # Milvus connection and collection manager
+│   └── utils/                                # shared utilities
+│       ├── __init__.py                       # utils package init
+│       └── logger.py                         # Loguru logger setup
+├── aiops-docs/                               # Operations knowledge samples
+│   ├── cpu_high_usage.md                     # CPU troubleshooting sample
+│   ├── disk_high_usage.md                    # Disk troubleshooting sample
+│   ├── memory_high_usage.md                  # Memory troubleshooting sample
+│   ├── service_unavailable.md                # Service-unavailable sample
+│   └── slow_response.md                      # Slow-response sample
+├── mcp_servers/                              # MCP services
+│   ├── cls_server.py                         # log query MCP server
+│   ├── monitor_server.py                     # monitoring MCP server
+│   └── README.md                             # MCP service notes
+├── static/                                   # Frontend workspace
+│   ├── index.html                            # page structure
+│   ├── app.js                                # interaction logic, trace, and status UI
+│   └── styles.css                            # styles
+├── tests/                                    # Automated tests
+│   ├── conftest.py                           # fixtures and shared setup
+│   ├── test_api_security.py                  # API authorization boundary tests
+│   ├── test_auth_service.py                  # auth service tests
+│   ├── test_intent_service.py                # intent routing tests
+│   ├── test_retrieval_service.py             # retrieval and rerank tests
+│   └── test_system_status_api.py             # system status API tests
+├── docs/                                     # Supporting docs and assets
+│   └── assets/                               # screenshot assets and conventions
+│       ├── README.md                         # capture rules, naming, and checklist
+│       └── screenshots/                      # README screenshot directory
+├── data/                                     # runtime SQLite data
+├── logs/                                     # runtime logs
+├── uploads/                                  # uploaded file cache
+├── volumes/                                  # Milvus-related container volumes
+├── .env.example                              # environment template
+├── Makefile                                  # Linux / macOS shortcuts
+├── OpsPilot_demo_script.md                   # demo walkthrough
+├── OpsPilot_interview_handbook.md            # interview and project talking points
+├── pyproject.toml                            # dependencies and tooling config
+├── pyrightconfig.json                        # Pyright config
+├── start-windows.bat                         # Windows startup script
+├── stop-windows.bat                          # Windows shutdown script
+├── vector-database.yml                       # Milvus Docker Compose
+├── README.md                                 # Chinese README
+└── README.en.md                              # English README
 ```
 
-## API Reference
+## 📚 Documentation Index
 
-### Auth
+- [OpsPilot_demo_script.md](./OpsPilot_demo_script.md): demo flow, prompts, and speaking sequence
+- [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md): project explanation and interview prep
+- [mcp_servers/README.md](./mcp_servers/README.md): MCP service notes
+- [docs/assets/README.md](./docs/assets/README.md): screenshot asset maintenance guide
 
-| Function | Method | Path | Description |
-|---|---|---|---|
-| Login | `POST` | `/api/auth/login` | Returns JWT and role |
-| Current user | `GET` | `/api/auth/me` | Resolves login state |
+## ⚙️ Key Configuration
 
-### Chat and Sessions
-
-| Function | Method | Path | Description |
-|---|---|---|---|
-| Chat | `POST` | `/api/chat` | Full response after intent routing |
-| Streaming chat | `POST` | `/api/chat_stream` | SSE output |
-| Clear session | `POST` | `/api/chat/clear` | Clears a single session |
-| Session detail | `GET` | `/api/chat/session/{session_id}` | Reads message history |
-| Session list | `GET` | `/api/sessions` | Lists current user sessions |
-| Delete session | `DELETE` | `/api/sessions/{session_id}` | Removes a session |
-
-### Operations Capabilities
-
-| Function | Method | Path | Description |
-|---|---|---|---|
-| AIOps diagnosis | `POST` | `/api/aiops` | Streaming diagnosis, `operator/admin` only |
-| Upload document | `POST` | `/api/upload` | Uploads and indexes docs |
-| Index directory | `POST` | `/api/index_directory` | Batch indexing |
-
-### Observability
-
-| Function | Method | Path | Description |
-|---|---|---|---|
-| Health | `GET` | `/health` | API, Milvus, SQLite health |
-| Metrics JSON | `GET` | `/metrics` | Structured metrics snapshot |
-| Metrics text | `GET` | `/metrics?format=prometheus` | Prometheus text format |
-
-## Configuration
-
-Main configuration lives in [`.env.example`](./.env.example) and [app/config.py](./app/config.py).
-
-### App and Service
+### 🧪 App and Model Settings
 
 | Variable | Description | Default |
 |---|---|---|
-| `APP_NAME` | project name | `OpsPilot` |
-| `APP_TITLE` | UI title | `An intelligent operations assistant built on RAG and MCP` |
-| `HOST` | host | `0.0.0.0` |
-| `PORT` | port | `9900` |
-| `DEBUG` | debug mode | `True/False` |
-
-### Auth and Persistence
-
-| Variable | Description | Default |
-|---|---|---|
-| `DATABASE_PATH` | SQLite path | `./data/opspilot.db` |
-| `JWT_SECRET` | JWT signing secret | dev default |
-| `JWT_EXPIRE_MINUTES` | token lifetime | `720` |
-| `PASSWORD_HASH_ITERATIONS` | PBKDF2 rounds | `120000` |
-
-### Retrieval
-
-| Variable | Description | Default |
-|---|---|---|
-| `DASHSCOPE_MODEL` | chat model | `qwen-max` |
+| `APP_NAME` | application name | `OpsPilot` |
+| `APP_TITLE` | page title | `An intelligent operations assistant built on RAG and MCP` |
+| `DASHSCOPE_API_KEY` | DashScope API key | empty |
+| `DASHSCOPE_MODEL` | primary chat model | `qwen-max` |
 | `DASHSCOPE_EMBEDDING_MODEL` | embedding model | `text-embedding-v4` |
-| `DENSE_TOP_K` | dense recall size | `6` |
-| `SPARSE_TOP_K` | sparse recall size | `6` |
-| `HYBRID_TOP_K` | fused candidate size | `4` |
-| `RERANK_TOP_K` | reranked result size | `3` |
+| `DASHSCOPE_RERANK_MODEL` | rerank model | `qwen3-rerank` |
 
-### MCP and Metrics
+### 🗃️ Storage and Retrieval
 
 | Variable | Description | Default |
 |---|---|---|
-| `MCP_CLS_URL` | log query tool endpoint | `http://localhost:8003/mcp` |
-| `MCP_MONITOR_URL` | monitoring tool endpoint | `http://localhost:8004/mcp` |
-| `METRICS_ENABLED` | enable metrics | `True` |
+| `DATABASE_PATH` | SQLite database path | `./data/opspilot.db` |
+| `MILVUS_HOST` | Milvus host | `localhost` |
+| `MILVUS_PORT` | Milvus port | `19530` |
+| `RAG_TOP_K` | final reference count | `3` |
+| `DENSE_TOP_K` | dense recall candidates | `6` |
+| `SPARSE_TOP_K` | sparse recall candidates | `6` |
+| `HYBRID_TOP_K` | post-fusion count | `4` |
+| `RERANK_TOP_K` | post-rerank count | `3` |
 
-## AIOps Operations Workflow
+### 🔐 Auth and Runtime
 
-OpsPilot uses a `Plan-Execute-Replan` diagnosis loop:
+| Variable | Description | Default |
+|---|---|---|
+| `JWT_SECRET` | JWT signing secret | development default |
+| `JWT_EXPIRE_MINUTES` | JWT lifetime | `720` |
+| `PASSWORD_HASH_ITERATIONS` | PBKDF2 iterations | `120000` |
+| `MCP_CLS_URL` | CLS MCP endpoint | `http://localhost:8003/mcp` |
+| `MCP_MONITOR_URL` | Monitor MCP endpoint | `http://localhost:8004/mcp` |
+| `METRICS_ENABLED` | enables metrics collection | `True` |
 
-1. Planner creates a diagnosis plan
-2. Executor runs steps and calls MCP tools
-3. Replanner decides whether to continue or converge
-4. The system emits a final report and persists workflow results
+## 🎯 AIOps Workflow
 
-This is best described as:
+1. **Planner** creates the diagnostic plan
+2. **Executor** runs MCP-backed steps
+3. **Replanner** decides whether to continue, revise, or stop
+4. **Reporter** summarizes the result and writes into `workflow_runs`
 
-> an AIOps diagnosis loop driven by near-realistic operations knowledge, alert samples, and tool-assisted reasoning.
+Typical demo scenarios:
 
-## Development Guide
+- CPU, memory, and disk alerts
+- service-unavailable and slow-response troubleshooting
+- diagnosis that combines logs, monitoring data, and runbook knowledge
 
-### Common commands
+## 🎬 Demo and Recording
+
+- Use `viewer` for standard chat, retrieval answers, and streaming replies
+- Use `operator` for AIOps diagnosis, document upload, and system-status demos
+- Capture the main workspace for answers and the left panel for session history, trace, and runtime status
+- Recording notes and screenshot rules live in [OpsPilot_demo_script.md](./OpsPilot_demo_script.md) and [docs/assets/README.md](./docs/assets/README.md)
+
+## 🧪 Testing and Observability
+
+### ✅ Current Coverage
+
+- auth service tests
+- intent routing tests
+- hybrid retrieval and rerank tests
+- API authorization boundary tests
+- system status API tests
+
+### ▶️ Run Tests
 
 ```bash
+make test
+make coverage
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pytest --cov=app --cov-report=term-missing
+```
+
+### 📈 Metrics
+
+- total HTTP requests
+- average request latency
+- dense retrieval latency
+- sparse retrieval latency
+- rerank latency
+- MCP tool-call success / failure rates
+- total AIOps workflow duration
+
+## 🧭 Development Commands
+
+### 🐧 Linux / macOS
+
+```bash
+make init
 make start
 make stop
 make restart
-make test
-make lint
+
+make install-dev
+make sync
+
+make up
+make down
+make status
+
+make upload
+make list-docs
+make check
+make status-mcp
+
 make format
+make lint
+make fix
+make test
 make coverage
 ```
+
+### 🪟 Windows
 
 ```powershell
 .\start-windows.bat
@@ -293,48 +395,9 @@ make coverage
 .\.venv\Scripts\python.exe -m black app tests
 ```
 
-### Recommended reading order
+## ❓ FAQ
 
-1. [app/main.py](./app/main.py)
-2. [app/services/chat_service.py](./app/services/chat_service.py)
-3. [app/services/intent_service.py](./app/services/intent_service.py)
-4. [app/services/retrieval_service.py](./app/services/retrieval_service.py)
-5. [app/services/session_service.py](./app/services/session_service.py)
-6. [app/services/auth_service.py](./app/services/auth_service.py)
-7. [app/agent/mcp_client.py](./app/agent/mcp_client.py)
-8. [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md)
-
-## Testing and Observability
-
-### Tests
-
-Current tests cover:
-
-- authentication service behavior
-- rule-based intent routing
-- retrieval fusion and reranking
-- API authorization boundaries
-
-Run:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-### Metrics
-
-The project records:
-
-- request volume
-- average latency
-- retrieval latency
-- rerank latency
-- MCP tool success/failure counts
-- end-to-end AIOps workflow duration
-
-## FAQ
-
-### 1. What if `make` is not available on Windows?
+### 🪟 What if `make` is unavailable on Windows?
 
 Use:
 
@@ -343,42 +406,25 @@ Use:
 .\stop-windows.bat
 ```
 
-### 2. Can the project run without a DashScope API key?
+### 🔑 Can the project run without a DashScope API key?
 
-Yes, but LLM-backed answering, embeddings, and retrieval quality will degrade.
+Yes. Services, tests, and the UI still run, but real chat quality, embeddings, and retrieval quality will degrade. Configure `DASHSCOPE_API_KEY` for a full demo.
 
-### 3. Why are upload and diagnosis endpoints restricted?
+### 🐳 What should I do if `/health` reports Milvus errors?
 
-Because they are higher-risk operations. The project intentionally includes a minimal security boundary that can be explained clearly in interviews.
+Make sure Docker Desktop is running, then execute:
 
-### 4. Is this a production system?
+```bash
+docker compose -f vector-database.yml up -d
+```
 
-No. It is better described as a complete and honest engineering prototype for operations-focused agent workflows.
+### 📤 Why does document upload fail?
 
-## Current Boundaries
+Typical causes:
 
-### Implemented
+- the current account is not `operator/admin`
+- the request does not include `Authorization: Bearer <token>`
 
-- intent routing
-- hybrid retrieval and lightweight reranking
-- Plan-Execute-Replan workflow
-- MCP tool integration
-- persistent state
-- JWT + role-based access
-- lightweight metrics and key-path tests
+### 🧪 Is this a production system?
 
-### Partially Implemented
-
-- reranking is lightweight, not a dedicated cross-encoder service
-- monitoring, alert, and ticket data are better described as near-realistic samples
-
-### Not Claimed
-
-- real production integration
-- multi-agent platform behavior
-- production-grade permission system
-- full production monitoring platform integration
-
-## License
-
-[MIT License](./LICENSE)
+Not yet. It is better positioned as a complete, clearly bounded, engineering-focused operations Agent example and demo project.

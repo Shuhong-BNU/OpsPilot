@@ -1,181 +1,175 @@
 @echo off
+setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
-setlocal enabledelayedexpansion
 
 echo ====================================
-echo 启动 OpsPilot 服务
+echo Start OpsPilot Services
 echo ====================================
 echo.
 
-REM 检查 uv 是否安装（可选，如果没有会使用 pip）
-echo [1/6] 检查包管理器...
+echo [1/8] Check package manager...
 where uv >nul 2>&1
 if errorlevel 1 (
-    echo [信息] uv 未安装，将使用传统 pip 方式
-    echo [提示] 安装 uv 可提升速度：pip install uv
-    set USE_UV=0
+    echo [INFO] uv was not found. Falling back to pip.
+    echo [TIP] Install uv for faster setup: pip install uv
+    set "USE_UV=0"
 ) else (
-    echo [成功] 检测到 uv 包管理器
-    set USE_UV=1
+    echo [OK] uv detected.
+    set "USE_UV=1"
 )
 echo.
 
-REM 确保 Python 版本正确
-echo [2/6] 配置 Python 版本...
+echo [2/8] Check Python version marker...
 if exist .python-version (
     set /p PYTHON_VERSION=<.python-version
-    echo [信息] 当前配置版本: !PYTHON_VERSION!
-    
-    REM 检查是否为 3.10（不兼容）
+    echo [INFO] Current .python-version: !PYTHON_VERSION!
     echo !PYTHON_VERSION! | findstr /C:"3.10" >nul
     if not errorlevel 1 (
-        echo [警告] Python 3.10 不兼容，自动更新到 3.13...
-        echo 3.13> .python-version
-        echo [成功] 已更新到 Python 3.13
+        echo [WARN] Python 3.10 is not recommended. Updating marker to 3.13...
+        > .python-version echo 3.13
+        echo [OK] .python-version updated to 3.13
     )
 ) else (
-    echo [信息] 创建 .python-version 文件...
-    echo 3.13> .python-version
+    echo [INFO] Creating .python-version...
+    > .python-version echo 3.13
 )
 echo.
 
-REM 创建或同步虚拟环境
-echo [3/6] 创建/同步虚拟环境...
+echo [3/8] Prepare virtual environment...
 if exist .venv\Scripts\python.exe (
-    echo [信息] 虚拟环境已存在，检查更新...
-    
-    REM 如果有 uv，尝试使用 uv sync
+    echo [INFO] Existing virtual environment found.
     if "%USE_UV%"=="1" (
         uv sync 2>nul
         if errorlevel 1 (
-            echo [警告] uv sync 失败，使用 pip 更新...
+            echo [WARN] uv sync failed. Updating with pip instead...
             .venv\Scripts\python.exe -m pip install -e . -q
         ) else (
-            echo [成功] 使用 uv 同步完成
+            echo [OK] Dependencies synced with uv.
         )
     ) else (
-        echo [信息] 使用 pip 更新依赖...
+        echo [INFO] Updating dependencies with pip...
         .venv\Scripts\python.exe -m pip install -e . -q
     )
 ) else (
-    echo [信息] 创建新的虚拟环境...
-    
-    REM 如果有 uv，尝试使用 uv sync
+    echo [INFO] Creating a new virtual environment...
     if "%USE_UV%"=="1" (
-        echo [信息] 尝试使用 uv sync 创建...
         uv sync 2>nul
         if not errorlevel 1 (
-            echo [成功] 使用 uv 创建完成
-            goto :venv_created
+            echo [OK] Virtual environment created with uv.
+            goto :venv_ready
         )
-        echo [警告] uv sync 失败，回退到传统方式...
+        echo [WARN] uv sync failed. Falling back to python -m venv...
     )
-    
-    REM 使用传统 Python venv 创建
-    echo [信息] 使用 python -m venv 创建...
+
     python -m venv .venv
     if errorlevel 1 (
-        echo [错误] 虚拟环境创建失败
-        echo [提示] 请确保已安装 Python 3.11+
+        echo [ERROR] Failed to create virtual environment.
+        echo [TIP] Make sure Python 3.11+ is installed and available in PATH.
         pause
         exit /b 1
     )
-    
-    REM 安装依赖
-    echo [信息] 安装项目依赖（这可能需要几分钟）...
+
+    echo [INFO] Installing project dependencies...
     .venv\Scripts\python.exe -m pip install --upgrade pip -q
     .venv\Scripts\python.exe -m pip install -e . -q
     if errorlevel 1 (
-        echo [错误] 依赖安装失败
+        echo [ERROR] Failed to install dependencies.
         pause
         exit /b 1
     )
-    echo [成功] 虚拟环境创建完成
+    echo [OK] Virtual environment created.
 )
 
-:venv_created
-echo [成功] 虚拟环境就绪
+:venv_ready
+echo [OK] Virtual environment is ready.
 echo.
 
-REM 设置 Python 命令
-set PYTHON_CMD=.venv\Scripts\python.exe
+set "PYTHON_CMD=.venv\Scripts\python.exe"
+set "CAN_INDEX_DOCS=1"
 
-REM 启动 Docker Compose
-echo [4/6] 启动 Milvus 向量数据库...
+if not exist logs mkdir logs
+
+if exist .env (
+    findstr /R /C:"^DASHSCOPE_API_KEY=$" /C:"^DASHSCOPE_API_KEY=your-api-key$" /C:"^DASHSCOPE_API_KEY=your-api-key-here$" .env >nul 2>&1
+    if not errorlevel 1 (
+        set "CAN_INDEX_DOCS=0"
+    )
+)
+
+echo [4/8] Start Milvus...
 docker ps --format "{{.Names}}" | findstr "milvus-standalone" >nul 2>&1
 if not errorlevel 1 (
-    echo [信息] Milvus 容器已在运行
+    echo [INFO] Milvus container is already running.
 ) else (
     docker compose -f vector-database.yml up -d
     if errorlevel 1 (
-        echo [错误] Docker 启动失败，请确保 Docker Desktop 已启动
+        echo [ERROR] Failed to start Docker services. Make sure Docker Desktop is running.
         pause
         exit /b 1
     )
-    echo [信息] 等待 Milvus 启动（10秒）...
+    echo [INFO] Waiting for Milvus to become ready...
     timeout /t 10 /nobreak >nul
 )
-echo [成功] Milvus 数据库就绪
+echo [OK] Milvus is ready.
 echo.
 
-REM 启动 CLS MCP 服务
-echo [5/6] 启动 CLS MCP 服务...
-start "CLS MCP Server" /min %PYTHON_CMD% mcp_servers/cls_server.py
+echo [5/8] Start CLS MCP service...
+start "CLS MCP Server" /min cmd /c "\"%PYTHON_CMD%\" \"mcp_servers\cls_server.py\" > logs\mcp_cls.log 2>&1"
 timeout /t 2 /nobreak >nul
-echo [成功] CLS MCP 服务已启动
+echo [OK] CLS MCP service started.
 echo.
 
-REM 启动 Monitor MCP 服务
-echo [6/6] 启动 Monitor MCP 服务...
-start "Monitor MCP Server" /min %PYTHON_CMD% mcp_servers/monitor_server.py
+echo [6/8] Start Monitor MCP service...
+start "Monitor MCP Server" /min cmd /c "\"%PYTHON_CMD%\" \"mcp_servers\monitor_server.py\" > logs\mcp_monitor.log 2>&1"
 timeout /t 2 /nobreak >nul
-echo [成功] Monitor MCP 服务已启动
+echo [OK] Monitor MCP service started.
 echo.
 
-REM 启动 FastAPI 服务
-echo [7/8] 启动 FastAPI 服务...
-start "OpsPilot API" %PYTHON_CMD% -m uvicorn app.main:app --host 0.0.0.0 --port 9900
-echo [信息] 等待服务启动（15秒）...
+echo [7/8] Start FastAPI service...
+start "OpsPilot API" "%PYTHON_CMD%" -m uvicorn app.main:app --host 0.0.0.0 --port 9900
+echo [INFO] Waiting for API startup...
 timeout /t 15 /nobreak >nul
 echo.
 
-REM 检查服务状态并上传文档
-echo.
-echo [信息] 检查服务状态...
+echo [8/8] Check API and upload default docs...
 curl -s http://localhost:9900/health >nul 2>&1
 if errorlevel 1 (
-    echo [警告] 服务可能还未完全启动，请稍等片刻
+    echo [WARN] API may still be starting. Please wait a little longer and retry if needed.
 ) else (
-    echo [成功] FastAPI 服务运行正常
-    echo.
-    
-    REM 获取 operator 登录令牌
-    set AUTH_TOKEN=
-    for /f "delims=" %%i in ('powershell -NoProfile -Command "$body = @{username='operator';password='operator123'} | ConvertTo-Json -Compress; try { (Invoke-RestMethod -Uri 'http://localhost:9900/api/auth/login' -Method Post -ContentType 'application/json' -Body $body).access_token } catch { '' }"') do set AUTH_TOKEN=%%i
-
-    echo [8/8] 上传文档到向量数据库...
-    for %%f in (aiops-docs\*.md) do (
-        echo   上传: %%~nxf
-        if defined AUTH_TOKEN (
-            curl -s -X POST http://localhost:9900/api/upload -H "Authorization: Bearer !AUTH_TOKEN!" -F "file=@%%f" >nul 2>&1
-        ) else (
-            echo   [警告] 未获取到 operator 登录令牌，已跳过上传
-        )
+    echo [OK] FastAPI service is responding.
+    set "AUTH_TOKEN="
+    for /f "usebackq delims=" %%i in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$json = '{\"username\":\"operator\",\"password\":\"operator123\"}'; try { $resp = Invoke-RestMethod -Uri 'http://localhost:9900/api/auth/login' -Method Post -ContentType 'application/json' -Body $json; Write-Output $resp.access_token } catch { Write-Output '' }"`) do (
+        set "AUTH_TOKEN=%%i"
     )
-    echo [成功] 文档上传完成
+
+    if "%CAN_INDEX_DOCS%"=="0" (
+        echo [WARN] DASHSCOPE_API_KEY is still a placeholder. Skipping default document upload.
+        echo [TIP] Set a real key in .env, then re-run start-windows.bat or upload docs manually.
+    ) else if defined AUTH_TOKEN (
+        for %%f in (aiops-docs\*.md) do (
+            echo [INFO] Uploading %%~nxf ...
+            curl -s -X POST http://localhost:9900/api/upload -H "Authorization: Bearer !AUTH_TOKEN!" -F "file=@%%f" >nul 2>&1
+        )
+        echo [OK] Default knowledge documents uploaded.
+    ) else (
+        echo [WARN] Failed to obtain operator token. Document upload was skipped.
+    )
 )
 
 echo.
 echo ====================================
-echo 服务启动完成！
+echo OpsPilot startup finished
 echo ====================================
-echo Web 界面: http://localhost:9900
-echo API 文档: http://localhost:9900/docs
+echo Listen address: http://0.0.0.0:9900
+echo Browser URL: http://localhost:9900
+echo API docs: http://localhost:9900/docs
+echo Health: http://localhost:9900/health
+echo Metrics: http://localhost:9900/metrics
 echo.
-echo 查看日志:
-echo   - FastAPI: logs\app_*.log（Loguru 日志，按天轮转）
-echo   - CLS MCP: type mcp_cls.log
-echo   - Monitor: type mcp_monitor.log
-echo 停止服务: stop-windows.bat
+echo Logs:
+echo   - FastAPI: logs\app_*.log
+echo   - CLS MCP: logs\mcp_cls.log
+echo   - Monitor MCP: logs\mcp_monitor.log
+echo Stop services: stop-windows.bat
 echo ====================================
 pause

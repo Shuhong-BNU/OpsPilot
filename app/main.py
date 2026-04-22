@@ -14,7 +14,7 @@ import os
 
 from app.config import config
 from loguru import logger
-from app.api import aiops, auth, chat, file, health, metrics, sessions
+from app.api import aiops, auth, chat, file, health, metrics, sessions, system
 from app.core.milvus_client import milvus_manager
 from app.services.auth_service import auth_service
 from app.services.database_service import database_service
@@ -28,8 +28,9 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info(f"🚀 {config.app_name} v{config.app_version} 启动中...")
     logger.info(f"📝 环境: {'开发' if config.debug else '生产'}")
-    logger.info(f"🌐 监听地址: http://{config.host}:{config.port}")
-    logger.info(f"📚 API 文档: http://{config.host}:{config.port}/docs")
+    logger.info(f"🌐 监听地址: {config.listen_url}")
+    logger.info(f"🧭 浏览器访问地址: {config.access_url}")
+    logger.info(f"📚 API 文档: {config.docs_url}")
 
     database_service.initialize()
     auth_service.initialize()
@@ -77,6 +78,7 @@ app.include_router(chat.router, prefix="/api", tags=["对话"])
 app.include_router(sessions.router, prefix="/api", tags=["会话管理"])
 app.include_router(file.router, prefix="/api", tags=["文件管理"])
 app.include_router(aiops.router, prefix="/api", tags=["AIOps智能运维"])
+app.include_router(system.router, prefix="/api", tags=["系统状态"])
 
 # 挂载静态文件
 static_dir = "static"

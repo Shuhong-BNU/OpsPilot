@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     dashscope_api_key: str = ""  # 默认空字符串，实际使用需从环境变量加载
     dashscope_model: str = "qwen-max"
     dashscope_embedding_model: str = "text-embedding-v4"  # v4 支持多种维度（默认 1024）
+    dashscope_rerank_model: str = "qwen3-rerank"
 
     # Milvus 配置
     milvus_host: str = "localhost"
@@ -82,6 +83,28 @@ class Settings(BaseSettings):
                 "url": self.mcp_monitor_url,
             }
         }
+
+    @property
+    def listen_url(self) -> str:
+        """服务真实监听地址。"""
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def access_host(self) -> str:
+        """面向浏览器展示的访问地址。"""
+        if self.host in {"0.0.0.0", "::", ""}:
+            return "localhost"
+        return self.host
+
+    @property
+    def access_url(self) -> str:
+        """浏览器访问地址。"""
+        return f"http://{self.access_host}:{self.port}"
+
+    @property
+    def docs_url(self) -> str:
+        """浏览器访问文档地址。"""
+        return f"{self.access_url}/docs"
 
 
 # 全局配置实例

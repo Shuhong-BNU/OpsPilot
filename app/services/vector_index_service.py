@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Dict, Optional
 
 from loguru import logger
@@ -129,7 +130,7 @@ class VectorIndexService:
             result.end_time = datetime.now()
             return result
 
-    def index_single_file(self, file_path: str):
+    def index_single_file(self, file_path: str) -> dict[str, Any]:
         """
         索引单个文件 (使用新的 LangChain 分割器)
 
@@ -141,6 +142,7 @@ class VectorIndexService:
             RuntimeError: 索引失败时抛出
         """
         path = Path(file_path).resolve()
+        started_at = perf_counter()
 
         if not path.exists() or not path.is_file():
             raise ValueError(f"文件不存在: {file_path}")
@@ -165,8 +167,32 @@ class VectorIndexService:
                 vector_store_manager.add_documents(documents)
                 retrieval_service.persist_chunks(normalized_path, documents)
                 logger.info(f"文件索引完成: {file_path}, 共 {len(documents)} 个分片")
+                duration_ms = int((perf_counter() - started_at) * 1000)
+                return {
+                    "status": "success",
+                    "source_path": normalized_path,
+                    "chunk_count": len(documents),
+                    "duration_ms": duration_ms,
+                    "stages": [
+                        {"stage": "read_file", "message": f"读取文件 {path.name}", "size_chars": len(content)},
+                        {"stage": "delete_old_vectors", "message": "清理旧向量与旧切片"},
+                        {"stage": "split_document", "message": f"生成 {len(documents)} 个文档分片"},
+                        {"stage": "write_vector_index", "message": "写入 Milvus 与 SQLite 检索索引"},
+                    ],
+                }
             else:
                 logger.warning(f"文件内容为空或无法分割: {file_path}")
+                duration_ms = int((perf_counter() - started_at) * 1000)
+                return {
+                    "status": "empty",
+                    "source_path": normalized_path,
+                    "chunk_count": 0,
+                    "duration_ms": duration_ms,
+                    "stages": [
+                        {"stage": "read_file", "message": f"读取文件 {path.name}", "size_chars": len(content)},
+                        {"stage": "split_document", "message": "未生成有效分片"},
+                    ],
+                }
 
         except Exception as e:
             logger.error(f"索引文件失败: {file_path}, 错误: {e}")

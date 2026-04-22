@@ -108,24 +108,50 @@ class DatabaseService:
                     """
                 )
 
-                try:
-                    conn.execute(
-                        """
-                        CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts
-                        USING fts5(
-                            content,
-                            chunk_id UNINDEXED,
-                            source_path UNINDEXED,
-                            file_name UNINDEXED,
-                            tokenize = 'unicode61 porter'
-                        );
-                        """
-                    )
-                except sqlite3.OperationalError as exc:
-                    logger.warning(f"SQLite FTS5 初始化失败，将跳过稀疏检索: {exc}")
+                self._initialize_fts(conn)
 
             self._initialized = True
             logger.info(f"SQLite 数据库初始化完成: {self.db_path}")
+
+    def _initialize_fts(self, conn: sqlite3.Connection) -> None:
+        """初始化 FTS5 表，并在不同平台间做兼容降级。"""
+        fts_statements = [
+            # 官方文档中 porter 是 wrapper tokenizer，正确顺序应为 porter unicode61。
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts
+            USING fts5(
+                content,
+                chunk_id UNINDEXED,
+                source_path UNINDEXED,
+                file_name UNINDEXED,
+                tokenize = 'porter unicode61'
+            );
+            """,
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts
+            USING fts5(
+                content,
+                chunk_id UNINDEXED,
+                source_path UNINDEXED,
+                file_name UNINDEXED,
+                tokenize = 'unicode61'
+            );
+            """,
+        ]
+
+        last_error: sqlite3.OperationalError | None = None
+        for index, statement in enumerate(fts_statements, start=1):
+            try:
+                conn.execute(statement)
+                if index == 1:
+                    logger.info("SQLite FTS5 初始化成功: tokenizer=porter unicode61")
+                else:
+                    logger.warning("SQLite FTS5 已降级为 tokenizer=unicode61")
+                return
+            except sqlite3.OperationalError as exc:
+                last_error = exc
+
+        logger.warning(f"SQLite FTS5 初始化失败，将跳过稀疏检索: {last_error}")
 
     @contextmanager
     def get_connection(self) -> Iterator[sqlite3.Connection]:

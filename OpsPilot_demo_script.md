@@ -1,0 +1,116 @@
+# OpsPilot 演示脚本
+
+本手册用于简历展示、面试讲解和录屏演示，目标是稳定复现 OpsPilot 的核心能力，而不是追求一次性跑完所有功能。
+
+## 启动前检查
+
+1. 确认 `.env` 中已配置真实 `DASHSCOPE_API_KEY`。
+2. 确认 `DASHSCOPE_MODEL / DASHSCOPE_EMBEDDING_MODEL / DASHSCOPE_RERANK_MODEL / RAG_MODEL` 已按当前环境填写。
+3. 确认 Docker Desktop 已启动，Milvus 可用。
+4. 执行 `.\start-windows.bat`，等待脚本输出：
+   - `Listen address: http://0.0.0.0:9900`
+   - `Browser URL: http://localhost:9900`
+5. 打开 `http://localhost:9900`。
+
+## 推荐演示顺序
+
+### 1. 系统状态面板
+
+- 登录前先说明：`0.0.0.0` 是服务监听地址，真正给浏览器访问的是 `localhost:9900`。
+- 登录 `viewer / viewer123` 后，点击右上角 `系统状态`。
+- 重点讲：
+  - 当前模型配置
+  - DashScope Key 只做掩码展示
+  - SQLite / Milvus / MCP 服务是否就绪
+  - 项目不是把原始日志暴露给用户，而是做了结构化状态呈现
+
+### 2. smalltalk
+
+- 提示词：`你好`
+- 预期现象：
+  - 快速返回简单问候
+  - 执行轨迹里出现 `意图分流 -> smalltalk`
+- 讲解要点：
+  - 规则优先分流
+  - 简单请求不走重型链路
+
+### 3. simple_qa
+
+- 提示词：`北京在哪里`
+- 预期现象：
+  - 正常直接回答
+  - 执行轨迹显示 `simple_qa`
+- 讲解要点：
+  - 普通知识问答走轻链路
+  - 响应时延比 RAG/AIOps 更短
+
+### 4. stream chat
+
+- 切换到底部 `流式` 模式
+- 提示词：`请用三点概括什么是 CPU 高负载`
+- 预期现象：
+  - 回答逐步流式输出
+  - 执行轨迹里能看到路由与完成事件
+- 讲解要点：
+  - SSE 流式对话已打通
+  - 面向前端体验做了实时输出
+
+### 5. knowledge_qa
+
+- 先确认已上传知识库文档；如果没有，使用 `operator / operator123` 上传 `aiops-docs/*.md`
+- 提示词：
+  - `根据知识库，CPU 高负载常见排查步骤有哪些？`
+  - `结合文档解释慢响应告警一般如何定位`
+- 预期现象：
+  - 返回基于资料的回答
+  - 执行轨迹出现 `RAG 检索`
+  - 能看到 `dense / sparse / fusion / rerank` 的摘要
+- 讲解要点：
+  - 混合检索而非单一路径召回
+  - 前端不展示原始后端日志，而展示结构化检索 trace
+
+### 6. auth boundary
+
+- 保持 `viewer` 角色，点击右上角 `AI Ops`
+- 预期现象：
+  - 前端直接提示：`当前角色为 viewer，仅支持聊天与知识问答，不支持 AIOps 诊断`
+  - 不再反复触发 `403`
+- 讲解要点：
+  - 前端做体验层防误触
+  - 后端仍保留真实权限校验
+
+### 7. aiops_diagnosis
+
+- 切换账号为 `operator / operator123`
+- 点击右上角 `AI Ops`
+- 预期现象：
+  - 聊天区展示最终诊断报告
+  - `执行轨迹` 按顺序出现 `status / plan / step_complete / report / complete`
+- 讲解要点：
+  - Plan-Execute-Replan 闭环已打通
+  - MCP 工具调用支撑日志与监控排查
+  - 诊断过程、结果与会话状态可追踪
+
+### 8. unsupported
+
+- 提示词：`帮我写一封情书`
+- 预期现象：
+  - 明确拒答
+  - 执行轨迹显示 `unsupported`
+- 讲解要点：
+  - 项目定义了职责边界
+  - 不把无关请求强行塞进运维助手能力里
+
+## 面试讲解建议
+
+- 先讲定位：`OpsPilot 是基于 RAG 与 MCP 的智能运维助手`
+- 再讲分流：`先做意图识别，再决定直答 / RAG / AIOps`
+- 再讲工程化：
+  - JWT + 角色权限
+  - SQLite 持久化会话与工作流
+  - 混合检索 + rerank
+  - 测试与 metrics
+  - 前端状态面板与执行轨迹
+- 最后强调边界：
+  - 这是近真实、可复现、可讲清楚的数据闭环
+  - 不是伪装成真实生产平台的夸大叙事

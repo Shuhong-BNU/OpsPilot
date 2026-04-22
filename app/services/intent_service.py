@@ -1,4 +1,4 @@
-"""规则优先的意图识别服务."""
+"""规则优先的意图识别服务。"""
 
 from __future__ import annotations
 
@@ -25,14 +25,21 @@ class IntentResult:
 
 
 class IntentService:
-    """规则优先，不确定时回退到轻量 LLM 分类."""
+    """规则优先，不确定时回退到轻量 LLM 分类。"""
 
     SMALLTALK_KEYWORDS = ("你好", "您好", "hi", "hello", "谢谢", "你是谁", "早上好", "晚上好")
-    AIOPS_KEYWORDS = (
+    AIOPS_CORE_KEYWORDS = (
         "告警",
+        "报警",
         "排障",
         "诊断",
         "故障",
+        "根因",
+        "修复",
+        "恢复",
+        "异常",
+    )
+    AIOPS_SIGNAL_KEYWORDS = (
         "cpu",
         "内存",
         "磁盘",
@@ -40,11 +47,43 @@ class IntentService:
         "超时",
         "服务不可用",
         "慢响应",
+        "错误率",
+        "负载",
+        "熔断",
         "root cause",
         "alert",
         "latency",
-        "异常",
-        "错误率",
+    )
+    DIAGNOSIS_ACTION_KEYWORDS = ("分析", "定位", "排查", "处理", "排障", "诊断", "修复", "恢复")
+    KNOWLEDGE_CONTEXT_KEYWORDS = (
+        "根据知识库",
+        "根据文档",
+        "结合知识库",
+        "结合文档",
+        "文档中",
+        "知识库里",
+        "runbook 中",
+        "解释",
+        "概括",
+        "介绍",
+        "说明",
+        "总结",
+        "常见排查步骤",
+        "如何定位",
+    )
+    LIVE_DIAGNOSIS_KEYWORDS = (
+        "当前系统",
+        "当前服务",
+        "当前环境",
+        "现在",
+        "当前是否",
+        "是否存在告警",
+        "帮我诊断",
+        "诊断当前",
+        "在线诊断",
+        "立即诊断",
+        "告警为什么一直在触发",
+        "看一下告警",
     )
     KNOWLEDGE_KEYWORDS = (
         "知识库",
@@ -60,6 +99,23 @@ class IntentService:
         "监控",
         "怎么配置",
         "原理",
+        "什么是",
+        "解释",
+        "概括",
+        "介绍",
+        "含义",
+    )
+    KNOWLEDGE_SIGNAL_KEYWORDS = (
+        "cpu",
+        "内存",
+        "磁盘",
+        "连接池",
+        "服务不可用",
+        "慢响应",
+        "告警规则",
+        "prometheus",
+        "kubernetes",
+        "linux",
     )
     UNSUPPORTED_KEYWORDS = ("写情书", "情书", "算命", "股票推荐", "彩票", "生成图片", "娱乐八卦")
 
@@ -67,7 +123,7 @@ class IntentService:
         self._classifier = None
 
     def classify(self, query: str) -> IntentResult:
-        """返回意图分类."""
+        """返回意图分类结果。"""
         text = query.strip()
         lowered = text.lower()
 
@@ -80,11 +136,32 @@ class IntentService:
         if any(keyword in lowered for keyword in self.SMALLTALK_KEYWORDS):
             return IntentResult(INTENT_SMALLTALK, "命中寒暄规则", 0.95)
 
-        if any(keyword in lowered for keyword in self.KNOWLEDGE_KEYWORDS):
-            return IntentResult(INTENT_KNOWLEDGE_QA, "命中文档/运维知识规则", 0.9)
+        has_aiops_core = any(keyword in lowered for keyword in self.AIOPS_CORE_KEYWORDS)
+        has_aiops_signal = any(keyword in lowered for keyword in self.AIOPS_SIGNAL_KEYWORDS)
+        has_diagnosis_action = any(keyword in lowered for keyword in self.DIAGNOSIS_ACTION_KEYWORDS)
+        has_knowledge_context = any(keyword in lowered for keyword in self.KNOWLEDGE_CONTEXT_KEYWORDS)
+        has_knowledge_signal = any(keyword in lowered for keyword in self.KNOWLEDGE_SIGNAL_KEYWORDS)
+        has_knowledge_keyword = any(keyword in lowered for keyword in self.KNOWLEDGE_KEYWORDS)
+        has_live_diagnosis = any(keyword in lowered for keyword in self.LIVE_DIAGNOSIS_KEYWORDS)
 
-        if any(keyword in lowered for keyword in self.AIOPS_KEYWORDS):
-            return IntentResult(INTENT_AIOPS, "命中故障诊断规则", 0.95)
+        # 解释型、文档型问题优先走 knowledge_qa，避免“告警 + 定位”被误判成 AIOps。
+        if (has_knowledge_context or has_knowledge_keyword) and not has_live_diagnosis:
+            return IntentResult(INTENT_KNOWLEDGE_QA, "命中文档/知识解释规则", 0.92)
+
+        if has_aiops_core and has_live_diagnosis:
+            return IntentResult(INTENT_AIOPS, "命中在线诊断规则", 0.95)
+
+        if has_aiops_core and has_diagnosis_action and not (has_knowledge_context or has_knowledge_keyword):
+            return IntentResult(INTENT_AIOPS, "命中故障诊断规则", 0.93)
+
+        if has_aiops_signal and has_diagnosis_action and has_live_diagnosis:
+            return IntentResult(INTENT_AIOPS, "命中信号诊断规则", 0.9)
+
+        if has_knowledge_signal and (has_knowledge_context or has_knowledge_keyword or has_diagnosis_action):
+            return IntentResult(INTENT_KNOWLEDGE_QA, "命中运维知识问答规则", 0.88)
+
+        if has_knowledge_signal and any(keyword in lowered for keyword in ("什么是", "解释", "概括", "介绍", "原理")):
+            return IntentResult(INTENT_KNOWLEDGE_QA, "命中运维概念解释规则", 0.88)
 
         if len(text) <= 18:
             return IntentResult(INTENT_SIMPLE_QA, "短问题默认走轻问答链路", 0.8)
@@ -96,7 +173,7 @@ class IntentService:
         return IntentResult(INTENT_SIMPLE_QA, "未命中规则且 LLM 不可用，回退到简单问答", 0.6)
 
     def _classify_with_llm(self, query: str) -> IntentResult | None:
-        """使用轻量 LLM 做兜底分类."""
+        """使用轻量 LLM 做兜底分类。"""
         if not config.dashscope_api_key:
             return None
 

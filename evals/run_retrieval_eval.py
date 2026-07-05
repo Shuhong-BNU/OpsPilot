@@ -32,6 +32,8 @@ STATUS_PASS = "PASS"
 STATUS_FAIL = "FAIL"
 STATUS_INFRA_BLOCKED = "INFRA_BLOCKED"
 MODE_HYBRID = "Hybrid Retrieval"
+RUNNER_MODE_MEASUREMENT = "measurement"
+RUNNER_MODE_CI = "ci"
 
 
 @dataclass
@@ -289,6 +291,23 @@ def average(values: list[int | float | None]) -> float:
     return sum(numeric) / len(numeric) if numeric else 0.0
 
 
+def determine_evaluation_status(results: list[CaseResult]) -> str:
+    if any(result.status == STATUS_INFRA_BLOCKED for result in results):
+        return STATUS_INFRA_BLOCKED
+    if any(result.status == STATUS_FAIL for result in results):
+        return STATUS_FAIL
+    return STATUS_PASS
+
+
+def determine_exit_code(results: list[CaseResult], ci_mode: bool = False) -> int:
+    evaluation_status = determine_evaluation_status(results)
+    if evaluation_status == STATUS_INFRA_BLOCKED:
+        return 2
+    if ci_mode and evaluation_status == STATUS_FAIL:
+        return 1
+    return 0
+
+
 def write_jsonl(path: Path, env: dict[str, Any], checks: list[InfraCheck], results: list[CaseResult]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
@@ -316,11 +335,12 @@ def build_report(
     checks: list[InfraCheck],
     results: list[CaseResult],
     dataset_path: Path,
+    runner_mode: str = RUNNER_MODE_MEASUREMENT,
 ) -> str:
     total = len(results)
     infra_blocked = [result for result in results if result.status == STATUS_INFRA_BLOCKED]
     scorable = [result for result in results if result.status != STATUS_INFRA_BLOCKED]
-    evaluation_status = STATUS_INFRA_BLOCKED if infra_blocked else STATUS_PASS
+    evaluation_status = determine_evaluation_status(results)
     hit_at_3 = average([result.hit_at_3 for result in scorable])
     mrr = average([result.reciprocal_rank for result in scorable])
     avg_wall = average([result.wall_time_ms for result in scorable])
@@ -333,6 +353,7 @@ def build_report(
         f"- Commit: `{env['commit']}`",
         f"- Branch: `{env['branch']}`",
         f"- Evaluation Mode: {env['evaluation_mode']}",
+        f"- Runner Mode: {runner_mode}",
         f"- Evaluation Status: {evaluation_status}",
         f"- Dataset: `{dataset_path.relative_to(REPO_ROOT)}`",
         f"- Dataset Size: {total}",
@@ -428,7 +449,13 @@ def main() -> int:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="Return exit code 1 for retrieval misses while preserving measurement outputs.",
+    )
     args = parser.parse_args()
+    runner_mode = RUNNER_MODE_CI if args.ci else RUNNER_MODE_MEASUREMENT
 
     cases = load_cases(args.dataset)
     case_warnings = validate_cases(cases)
@@ -441,12 +468,14 @@ def main() -> int:
     else:
         results = [run_case(case, retrieval_service) for case in cases]
     write_jsonl(args.results, env, checks, results)
-    write_report(args.report, build_report(env, checks, results, args.dataset))
+    write_report(args.report, build_report(env, checks, results, args.dataset, runner_mode))
 
     total = len(results)
     blocked = sum(1 for result in results if result.status == STATUS_INFRA_BLOCKED)
     scorable = [result for result in results if result.status != STATUS_INFRA_BLOCKED]
     print(f"Evaluation Mode: {MODE_HYBRID}")
+    print(f"Runner Mode: {runner_mode}")
+    print(f"Evaluation Status: {determine_evaluation_status(results)}")
     print(f"Total Cases: {total}")
     print(f"Infrastructure Blocked Cases: {blocked}")
     print(f"Hit@3: {average([result.hit_at_3 for result in scorable]):.3f}")
@@ -455,7 +484,7 @@ def main() -> int:
     print(f"Results: {args.results}")
     print(f"Report: {args.report}")
 
-    return 2 if blocked else 0
+    return determine_exit_code(results, ci_mode=args.ci)
 
 
 if __name__ == "__main__":

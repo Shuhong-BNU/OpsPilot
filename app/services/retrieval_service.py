@@ -108,11 +108,23 @@ class RetrievalService:
         elapsed = int((perf_counter() - start) * 1000)
         return docs, elapsed
 
+    @staticmethod
+    def _build_sparse_query(query: str) -> str:
+        tokens = TOKEN_PATTERN.findall(query.lower())
+        if not tokens:
+            return ""
+        if len(tokens) == 1:
+            return tokens[0]
+        return " OR ".join(f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens)
+
     def _sparse_search(self, query: str) -> tuple[list[Document], int]:
         from time import perf_counter
 
         start = perf_counter()
-        sparse_query = " ".join(TOKEN_PATTERN.findall(query.lower())) or query
+        sparse_query = self._build_sparse_query(query)
+        if not sparse_query:
+            elapsed = int((perf_counter() - start) * 1000)
+            return [], elapsed
         rows = database_service.search_sparse_documents(sparse_query, config.sparse_top_k)
         docs = [
             Document(

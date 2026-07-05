@@ -1,0 +1,10 @@
+{"id":"rag_cpu_001","question":"CPU 使用率持续超过 80% 应该如何排查？","relevant_sources":["cpu_high_usage.md"],"tags":["cpu","runbook"]}
+{"id":"rag_cpu_002","question":"遇到 HighCPUUsage 告警时有哪些立即处理措施？","relevant_sources":["cpu_high_usage.md"],"tags":["cpu","emergency"]}
+{"id":"rag_memory_001","question":"内存使用率超过 85% 可能是什么原因？","relevant_sources":["memory_high_usage.md"],"tags":["memory","runbook"]}
+{"id":"rag_memory_002","question":"出现 OOM 或频繁 GC 时应该如何排查内存问题？","relevant_sources":["memory_high_usage.md"],"tags":["memory","jvm"]}
+{"id":"rag_disk_001","question":"磁盘使用率过高告警应该先检查哪些内容？","relevant_sources":["disk_high_usage.md"],"tags":["disk","runbook"]}
+{"id":"rag_disk_002","question":"日志文件导致磁盘空间不足时有哪些处理方案？","relevant_sources":["disk_high_usage.md"],"tags":["disk","logs"]}
+{"id":"rag_service_001","question":"服务不可用告警一般有哪些常见根因？","relevant_sources":["service_unavailable.md"],"tags":["service","availability"]}
+{"id":"rag_service_002","question":"服务健康检查失败或者错误率超过 50% 时应如何应急？","relevant_sources":["service_unavailable.md"],"tags":["service","emergency"]}
+{"id":"rag_slow_001","question":"慢响应告警通常如何定位？","relevant_sources":["slow_response.md"],"tags":["latency","runbook"]}
+{"id":"rag_slow_002","question":"接口响应时间变长时可能涉及哪些数据库或依赖服务问题？","relevant_sources":["slow_response.md","service_unavailable.md"],"tags":["latency","dependency"]}

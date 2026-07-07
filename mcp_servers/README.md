@@ -9,10 +9,10 @@
 
 **核心工具：**
 - `get_current_timestamp` - 获取当前时间戳
+- `get_region_code_by_name` - 根据地区名称查询地区代码
 - `get_topic_info_by_name` - 查询日志主题
+- `search_topic_by_service_name` - 根据服务名称搜索日志主题
 - `search_log` - 日志搜索
-- `search_service_logs` - 服务日志查询（支持级别筛选）
-- `analyze_log_pattern` - 日志模式分析
 
 ### Monitor Server (`monitor_server.py`)
 **监控数据服务** - 端口 8004
@@ -20,9 +20,6 @@
 **核心工具：**
 - `query_cpu_metrics` - CPU 使用率查询
 - `query_memory_metrics` - 内存使用查询
-- `query_process_list` - 进程列表
-- `search_historical_tickets` - 历史工单查询
-- `get_service_info` / `list_all_services` - 服务信息
 
 ## 🚀 快速开始
 
@@ -57,42 +54,53 @@ python mcp_servers/monitor_server.py
 用户: data-sync-service 出现告警，请排查
 
 Agent 自动执行:
-1. list_all_services() → 查看所有服务状态
-2. get_service_info("data-sync-service") → 获取服务详情
-3. query_cpu_metrics("data-sync-service") → CPU 趋势分析
-4. search_service_logs("data-sync-service", level="error") → 错误日志
-5. analyze_log_pattern("data-sync-service") → 日志模式分析
-6. search_historical_tickets(service_name="data-sync-service") → 历史工单
-7. 综合分析 → 生成诊断报告和修复建议
+1. search_topic_by_service_name(service_name="data-sync-service") → 查找服务对应的日志 topic
+2. get_current_timestamp() → 获取当前毫秒时间戳
+3. search_log(topic_id="topic-001", start_time=..., end_time=..., query="level:ERROR") → 查询错误日志
+4. query_cpu_metrics(service_name="data-sync-service") → CPU 趋势分析
+5. query_memory_metrics(service_name="data-sync-service") → 内存趋势分析
+6. 综合分析 → 生成诊断报告和修复建议
 ```
 
 ### 工具参数示例
 
-**查询 CPU 指标：**
+**按服务查找日志 Topic：**
 ```python
-query_cpu_metrics(
+search_topic_by_service_name(
     service_name="data-sync-service",
-    start_time="2024-02-14 02:00:00",
-    interval="1m"
+    fuzzy=True
 )
 ```
 
 **搜索错误日志：**
 ```python
-search_service_logs(
-    service_name="data-sync-service",
-    log_level="error",
-    keyword="timeout",
+current_ts = get_current_timestamp()
+start_ts = current_ts - (15 * 60 * 1000)
+
+search_log(
+    topic_id="topic-001",
+    start_time=start_ts,
+    end_time=current_ts,
+    query="level:ERROR",
     limit=100
 )
 ```
 
-**搜索历史工单：**
+**查询 CPU 指标：**
 ```python
-search_historical_tickets(
+query_cpu_metrics(
     service_name="data-sync-service",
-    issue_type="cpu",
-    limit=10
+    start_time="2026-02-14 02:00:00",
+    interval="1m"
+)
+```
+
+**查询内存指标：**
+```python
+query_memory_metrics(
+    service_name="data-sync-service",
+    start_time="2026-02-14 02:00:00",
+    interval="1m"
 )
 ```
 
@@ -100,7 +108,7 @@ search_historical_tickets(
 
 当前 MCP 协议链路、Server 进程和工具定义是真实实现；AIOps 可以通过 MCP client 获取工具并发起调用。
 
-默认日志、监控、服务状态和历史工单数据是可复现 Mock 数据。仓库默认没有接入生产 Prometheus、真实腾讯云 CLS、MySQL 或云监控。接入真实 API 时，应在现有 server 文件中替换数据源适配层，并保留工具入参和返回结构的兼容性。
+默认返回的日志数据、CPU 指标和内存指标是可复现 Mock 数据。仓库默认没有接入生产 Prometheus、真实腾讯云 CLS、MySQL 或云监控。接入真实 API 时，应在现有 server 文件中替换数据源适配层，并保留工具入参和返回结构的兼容性。
 
 ## 🔧 高级配置
 

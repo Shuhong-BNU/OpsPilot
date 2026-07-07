@@ -56,7 +56,7 @@ python mcp_servers/monitor_server.py
 Agent 自动执行:
 1. search_topic_by_service_name(service_name="data-sync-service") → 查找服务对应的日志 topic
 2. get_current_timestamp() → 获取当前毫秒时间戳
-3. search_log(topic_id="topic-001", start_time=..., end_time=..., query="level:ERROR") → 查询错误日志
+3. search_log(topic_id="topic-001", start_time=..., end_time=...) → 查询近期日志
 4. query_cpu_metrics(service_name="data-sync-service") → CPU 趋势分析
 5. query_memory_metrics(service_name="data-sync-service") → 内存趋势分析
 6. 综合分析 → 生成诊断报告和修复建议
@@ -72,7 +72,7 @@ search_topic_by_service_name(
 )
 ```
 
-**搜索错误日志：**
+**查询近期日志：**
 ```python
 current_ts = get_current_timestamp()
 start_ts = current_ts - (15 * 60 * 1000)
@@ -81,7 +81,6 @@ search_log(
     topic_id="topic-001",
     start_time=start_ts,
     end_time=current_ts,
-    query="level:ERROR",
     limit=100
 )
 ```

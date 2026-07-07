@@ -35,9 +35,12 @@ pip install fastmcp
 
 **方式一：使用 Makefile（推荐）**
 ```bash
-make mcp-start   # 启动所有 MCP 服务
-make mcp-stop    # 停止所有 MCP 服务
-make mcp-status  # 查看服务状态
+make start        # 启动 CLS + Monitor MCP + FastAPI
+make stop         # 停止所有服务
+make status-mcp   # 查看 MCP 服务状态
+
+make start-cls      # 只启动 CLS MCP 服务
+make start-monitor  # 只启动 Monitor MCP 服务
 ```
 
 **方式二：手动启动**
@@ -92,6 +95,12 @@ search_historical_tickets(
     limit=10
 )
 ```
+
+## 🧭 Mock / Real 边界
+
+当前 MCP 协议链路、Server 进程和工具定义是真实实现；AIOps 可以通过 MCP client 获取工具并发起调用。
+
+默认日志、监控、服务状态和历史工单数据是可复现 Mock 数据。仓库默认没有接入生产 Prometheus、真实腾讯云 CLS、MySQL 或云监控。接入真实 API 时，应在现有 server 文件中替换数据源适配层，并保留工具入参和返回结构的兼容性。
 
 ## 🔧 高级配置
 

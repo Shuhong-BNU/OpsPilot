@@ -15,7 +15,8 @@ OpsPilot 将对话问答、知识检索、AIOps 诊断和 MCP 工具协同收拢
 
 - 🤖 **对话工作台**：普通问答、流式输出、会话历史和执行轨迹统一在同一界面完成
 - 🧭 **意图分流**：按 `smalltalk / simple_qa / knowledge_qa / aiops_diagnosis / unsupported` 切换处理链路
-- 📚 **混合检索**：组合 `Milvus dense recall + SQLite FTS5 sparse recall + RRF + rerank`
+- 📚 **混合检索**：组合 `Milvus dense recall + SQLite FTS5 sparse recall + RRF + lightweight lexical-overlap rerank`
+- 📏 **Eval-driven Retrieval**：固定 10 条项目内离线样例，跟踪 Hit@3、MRR、PASS / FAIL / INFRA_BLOCKED 与 frozen baselines
 - 🔧 **AIOps 诊断**：基于 `Plan-Execute-Replan` 自动拆解排障步骤并输出诊断结果
 - 🔌 **MCP 集成**：同时接入日志查询和监控查询能力，保留工具调用记录
 - 💾 **状态持久化**：会话、消息、工作流和工具日志统一落在 SQLite
@@ -49,10 +50,32 @@ OpsPilot 将对话问答、知识检索、AIOps 诊断和 MCP 工具协同收拢
 |---|---|---|
 | Web 框架 | FastAPI、Uvicorn、sse-starlette | 提供 REST API、SSE 流式对话和 AIOps 流式诊断 |
 | LLM / Agent | LangChain、LangGraph、DashScope / Qwen、langchain-qwq | 对话 Agent、AIOps 工作流、工具调用与规划执行 |
-| 检索增强 | Milvus、SQLite FTS5、RRF、轻量 rerank | 稠密召回、稀疏召回、候选融合与重排 |
+| 检索增强 | Milvus、SQLite FTS5、RRF、轻量 lexical-overlap rerank | 稠密召回、稀疏召回、候选融合与当前代码中的轻量重排 |
 | 工具集成 | MCP、FastMCP、langchain-mcp-adapters | 接入日志查询、监控查询等外部工具 |
 | 状态与数据 | SQLite | 会话、消息、工作流、工具日志、文档切片持久化 |
 | 工程化 | pytest、pytest-cov、ruff、black、mypy、Loguru | 测试、代码质量、日志与运行时可观测性 |
+
+## 📏 Retrieval Eval Baseline
+
+OpsPilot 当前包含一个 retrieval-only 离线评测入口，用固定 10 条项目内样例评估真实 `hybrid_search` 链路：
+
+```text
+fixed dataset -> Milvus dense -> SQLite FTS5 sparse -> RRF -> lightweight rerank -> final top3
+```
+
+这不是通用 benchmark，而是用于防止项目内检索链路只靠 Demo 判断的固定回归样例。
+
+| Metric | Baseline v1 | Baseline v1.1 |
+|---|---:|---:|
+| Scorable | 10/10 | 10/10 |
+| Hit@3 | 1.000 | 1.000 |
+| MRR | 0.950 | 1.000 |
+| Sparse non-empty | 0/10 | 4/10 |
+| Sparse relevant hit | 0/10 | 4/10 |
+
+工程主线：Baseline v1 通过 trace 发现 sparse 贡献为 0/10，随后定位到 FTS5 中文 tokenizer 限制与 multi-token strict AND 查询过严；通过 AND vs quoted OR 单变量实验后，仅修改 sparse query builder，建立 Baseline v1.1。
+
+Eval runner 默认是 Measurement 模式：能力 FAIL 会写入报告但退出码仍为 0；`--ci` 模式用于门禁：能力 FAIL 返回 1，INFRA_BLOCKED 始终返回 2。详见 [evals/README.md](./evals/README.md)。
 
 ## 🚀 快速开始
 
@@ -132,13 +155,14 @@ docker compose -f vector-database.yml up -d
 | 清空会话 | `POST` | `/api/chat/clear` | 清空单个会话 |
 | 会话详情 | `GET` | `/api/chat/session/{session_id}` | 获取历史消息 |
 | 会话列表 | `GET` | `/api/sessions` | 获取当前用户全部会话 |
+| 会话详情 | `GET` | `/api/sessions/{session_id}` | 获取单个会话及历史消息 |
 | 删除会话 | `DELETE` | `/api/sessions/{session_id}` | 删除单个会话 |
 | AIOps 诊断 | `POST` | `/api/aiops` | `operator/admin` 可访问，流式诊断 |
 | 文件上传 | `POST` | `/api/upload` | `operator/admin` 可访问，自动索引文档 |
-| 批量索引 | `POST` | `/api/index_directory` | 批量索引目录 |
+| 批量索引 | `POST` | `/api/index_directory` | `operator/admin` 可访问，批量索引目录 |
 | 系统状态 | `GET` | `/api/system/status` | 返回模型、依赖和访问地址状态 |
 | 健康检查 | `GET` | `/health` | 检查 API / Milvus / SQLite |
-| 指标快照 | `GET` | `/metrics` | 返回 JSON 指标 |
+| 指标快照 | `GET` | `/metrics` | 返回 JSON 指标；`?format=prometheus` 返回 Prometheus-format text |
 
 ## 🗂️ 项目结构
 
@@ -148,7 +172,8 @@ docker compose -f vector-database.yml up -d
 - `aiops-docs/`：运维知识样本，适合做检索和诊断演示
 - `mcp_servers/`：日志查询与监控查询两个 MCP 服务
 - `static/`：单页前端工作台
-- `tests/`：核心接口与服务测试
+- `tests/`：核心接口、服务、前端安全、流式时序与 Eval Contract 测试
+- `evals/`：Retrieval Eval dataset、runner、latest results/report 与 frozen baselines
 - `docs/assets/`：截图素材和素材维护说明
 - `data/`、`logs/`、`uploads/`、`volumes/`：运行时生成的数据、日志、上传缓存和容器卷目录
 
@@ -224,6 +249,13 @@ OpsPilot/
 │   ├── memory_high_usage.md                  # 内存异常排障样本
 │   ├── service_unavailable.md                # 服务不可用排障样本
 │   └── slow_response.md                      # 慢响应排障样本
+├── evals/                                    # Retrieval Eval
+│   ├── README.md                             # Eval 目标、指标、模式和 baseline 说明
+│   ├── datasets/opspilot_rag_cases.jsonl     # 固定 10 条项目内离线样例
+│   ├── run_retrieval_eval.py                 # Measurement / --ci runner
+│   ├── results/                              # latest raw results
+│   ├── reports/                              # latest Markdown report
+│   └── baselines/                            # frozen v1 / v1.1 artifacts
 ├── mcp_servers/                              # MCP 服务
 │   ├── cls_server.py                         # 日志查询 MCP 服务
 │   ├── monitor_server.py                     # 监控查询 MCP 服务
@@ -237,8 +269,12 @@ OpsPilot/
 │   ├── test_api_security.py                  # API 权限边界测试
 │   ├── test_auth_service.py                  # 鉴权服务测试
 │   ├── test_intent_service.py                # 意图识别测试
-│   ├── test_retrieval_service.py             # 检索与重排测试
-│   └── test_system_status_api.py             # 系统状态接口测试
+│   ├── test_retrieval_service.py             # 检索、RRF、query builder 与重排测试
+│   ├── test_retrieval_eval_contract.py        # Eval Measurement / --ci contract 测试
+│   ├── test_chat_stream_timing.py             # 流式时序测试
+│   ├── test_frontend_security.py              # 前端安全边界测试
+│   ├── test_session_api.py                    # 会话 API 测试
+│   └── test_system_status_api.py              # 系统状态接口测试
 ├── docs/                                     # 补充文档与素材
 │   └── assets/                               # 截图素材与素材规范
 │       ├── README.md                         # 截图命名、分辨率和补图清单
@@ -263,7 +299,8 @@ OpsPilot/
 ## 📚 文档索引
 
 - [OpsPilot_demo_script.md](./OpsPilot_demo_script.md)：演示顺序、提示词和讲解节奏
-- [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md)：项目讲解与问答准备
+- [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md)：面试讲解、Eval-driven 工程故事和问答准备
+- [evals/README.md](./evals/README.md)：Retrieval Eval、Baseline v1/v1.1 与 Measurement / --ci Contract
 - [mcp_servers/README.md](./mcp_servers/README.md)：MCP 服务补充说明
 - [docs/assets/README.md](./docs/assets/README.md)：截图素材维护规范
 
@@ -304,6 +341,13 @@ OpsPilot/
 | `MCP_MONITOR_URL` | Monitor MCP 地址 | `http://localhost:8004/mcp` |
 | `METRICS_ENABLED` | 是否启用指标采集 | `True` |
 
+
+## 🔌 MCP Mock / Real 边界
+
+OpsPilot 的 MCP 协议链路是真实实现：应用通过 `MultiServerMCPClient` 连接两个本地 FastMCP server，并在 AIOps 链路中保留工具调用记录。
+
+当前仓库默认的日志和监控数据源是可复现 Mock 数据：没有默认接入生产 Prometheus、真实腾讯云 CLS 或 MySQL。`mcp_servers/` 保留真实数据源适配入口，适合后续替换为生产 API。
+
 ## 🎯 AIOps 诊断链路
 
 1. **Planner** 生成诊断计划
@@ -330,9 +374,13 @@ OpsPilot/
 
 - 鉴权服务测试
 - 意图识别规则测试
-- 混合检索与重排测试
-- API 权限边界测试
-- 系统状态接口测试
+- 混合检索、RRF、query builder 与重排测试
+- Retrieval Eval Measurement / `--ci` Contract 测试
+- 流式对话时序测试
+- API 与前端权限边界测试
+- 会话 API 与系统状态接口测试
+
+当前仓库配置了本地测试和代码质量工具；GitHub CI 暂未配置，不使用 CI badge。
 
 ### ▶️ 运行测试
 
@@ -408,7 +456,19 @@ make coverage
 
 ### 🔑 没有配置 DashScope API Key 能运行吗？
 
-可以启动服务、跑测试和浏览页面，但真实问答、Embedding 和混合检索效果会退化。完整演示建议配置 `DASHSCOPE_API_KEY`。
+可以启动页面、FastAPI 和本地单元测试，但完整模型与检索能力不可用。
+
+| Capability | Without DashScope Key |
+|---|---|
+| 页面 / FastAPI | 可启动 |
+| 本地单元测试 | 可运行 |
+| 真实 LLM Chat | 不可，只能返回未配置提示或轻量降级 |
+| Embedding | 不可 |
+| Dense indexing | 不可 |
+| 完整 Hybrid Retrieval | 不可正式运行 |
+| Retrieval Eval | 记为 `INFRA_BLOCKED` |
+
+Sparse 查询是否可用取决于本地 SQLite 是否已有索引，不能代表完整 Hybrid Retrieval 可用。完整演示建议配置 `DASHSCOPE_API_KEY`。
 
 ### 🐳 `/health` 返回 Milvus 异常怎么办？
 

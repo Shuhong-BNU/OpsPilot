@@ -203,3 +203,16 @@
 - 最后强调边界：
   - 这是近真实、可复现、可讲清楚的数据闭环
   - 不是伪装成真实生产平台的夸大叙事
+
+
+## 工程亮点口播
+
+这段适合在产品演示结束后补充 60-90 秒，不替代完整面试讲解。
+
+> 我没有只停在“这个 Demo 能回答问题”。后续我为 Retrieval 链路补了固定 10-case 离线 Eval，直接评估 `Milvus dense + SQLite FTS5 sparse + RRF + lightweight rerank`。Baseline v1 的 Hit@3 已经是 1.000，但 trace 显示 sparse relevant hit 是 0/10，说明名义上的 Hybrid 实际没有 sparse 贡献。
+>
+> 我继续做只读诊断，确认 FTS5 有 21 条真实 chunk、SQL mapping 正常，问题主要来自中文 tokenizer 限制和 multi-token AND 查询过严。随后用同一 dataset 做 AND vs quoted OR 单变量实验，OR 让 sparse relevant hit 提升到 4/10，再做最小 query-builder 修复，建立 Baseline v1.1，在项目内 10 条固定样例上 MRR 从 0.95 提升到 1.00。
+>
+> 这条链路说明项目不是只靠演示，而是有 baseline、诊断、单变量实验、修复、复测和 PR review 的工程闭环。
+
+完整面试讲法见 [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md)。

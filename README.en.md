@@ -15,7 +15,8 @@ OpsPilot brings conversational assistance, knowledge retrieval, AIOps diagnosis,
 
 - 🤖 **Chat Workspace**: standard responses, streaming output, session history, and execution trace in one UI
 - 🧭 **Intent Routing**: switches across `smalltalk / simple_qa / knowledge_qa / aiops_diagnosis / unsupported`
-- 📚 **Hybrid Retrieval**: combines `Milvus dense recall + SQLite FTS5 sparse recall + RRF + rerank`
+- 📚 **Hybrid Retrieval**: combines `Milvus dense recall + SQLite FTS5 sparse recall + RRF + lightweight lexical-overlap rerank`
+- 📏 **Eval-driven Retrieval**: uses a fixed 10-case project-local dataset to track Hit@3, MRR, PASS / FAIL / INFRA_BLOCKED, and frozen baselines
 - 🔧 **AIOps Diagnosis**: uses `Plan-Execute-Replan` to generate structured troubleshooting steps
 - 🔌 **MCP Integration**: connects log and monitoring tools while persisting tool-call records
 - 💾 **Persistent State**: stores sessions, messages, workflows, and tool logs in SQLite
@@ -49,10 +50,32 @@ OpsPilot brings conversational assistance, knowledge retrieval, AIOps diagnosis,
 |---|---|---|
 | Web framework | FastAPI, Uvicorn, sse-starlette | REST APIs, SSE chat, streaming AIOps diagnosis |
 | LLM / Agent | LangChain, LangGraph, DashScope / Qwen, langchain-qwq | chat Agent, AIOps workflow, planning, tool orchestration |
-| Retrieval | Milvus, SQLite FTS5, RRF, lightweight rerank | dense recall, sparse recall, fusion, reranking |
+| Retrieval | Milvus, SQLite FTS5, RRF, lightweight lexical-overlap rerank | dense recall, sparse recall, fusion, and the current code-level reranker |
 | Tool integration | MCP, FastMCP, langchain-mcp-adapters | log and monitoring tool integration |
 | State and data | SQLite | sessions, messages, workflows, tool logs, document chunks |
 | Engineering | pytest, pytest-cov, ruff, black, mypy, Loguru | testing, linting, formatting, logging |
+
+## 📏 Retrieval Eval Baseline
+
+OpsPilot now includes a retrieval-only offline eval path over the real `hybrid_search` stack:
+
+```text
+fixed dataset -> Milvus dense -> SQLite FTS5 sparse -> RRF -> lightweight rerank -> final top3
+```
+
+This is a fixed project-local 10-case eval, not a general benchmark.
+
+| Metric | Baseline v1 | Baseline v1.1 |
+|---|---:|---:|
+| Scorable | 10/10 | 10/10 |
+| Hit@3 | 1.000 | 1.000 |
+| MRR | 0.950 | 1.000 |
+| Sparse non-empty | 0/10 | 4/10 |
+| Sparse relevant hit | 0/10 | 4/10 |
+
+The engineering path was: Baseline v1 showed sparse contribution at 0/10; trace and FTS5 checks identified Chinese tokenizer limits plus overly strict multi-token AND matching; a read-only AND vs quoted OR experiment justified one minimal sparse query-builder fix; Baseline v1.1 then improved MRR on the fixed project-local dataset.
+
+The eval runner defaults to Measurement mode: capability FAIL is recorded in the report while the process exits 0. `--ci` enables gate behavior: capability FAIL exits 1, while INFRA_BLOCKED always exits 2. See [evals/README.md](./evals/README.md).
 
 ## 🚀 Quick Start
 
@@ -132,13 +155,14 @@ docker compose -f vector-database.yml up -d
 | Clear session | `POST` | `/api/chat/clear` | clears one session |
 | Session detail | `GET` | `/api/chat/session/{session_id}` | returns message history |
 | Session list | `GET` | `/api/sessions` | lists all sessions for the current user |
+| Session detail | `GET` | `/api/sessions/{session_id}` | returns one session and its message history |
 | Delete session | `DELETE` | `/api/sessions/{session_id}` | deletes one session |
 | AIOps diagnosis | `POST` | `/api/aiops` | streaming diagnosis for `operator/admin` |
-| Upload document | `POST` | `/api/upload` | uploads and indexes a document |
-| Batch index | `POST` | `/api/index_directory` | indexes a directory |
+| Upload document | `POST` | `/api/upload` | `operator/admin`; uploads and indexes a document |
+| Batch index | `POST` | `/api/index_directory` | `operator/admin`; indexes a directory |
 | System status | `GET` | `/api/system/status` | returns model, dependency, and access status |
 | Health check | `GET` | `/health` | checks API / Milvus / SQLite |
-| Metrics snapshot | `GET` | `/metrics` | returns JSON metrics |
+| Metrics snapshot | `GET` | `/metrics` | returns JSON metrics; `?format=prometheus` returns Prometheus-format text |
 
 ## 🗂️ Project Structure
 
@@ -148,7 +172,8 @@ docker compose -f vector-database.yml up -d
 - `aiops-docs/`: operations knowledge samples for retrieval and diagnosis demos
 - `mcp_servers/`: MCP servers for log and monitoring access
 - `static/`: single-page frontend workspace
-- `tests/`: service and API tests
+- `tests/`: service, API, frontend-security, streaming-timing, and Eval Contract tests
+- `evals/`: Retrieval Eval dataset, runner, latest results/report, and frozen baselines
 - `docs/assets/`: screenshot assets and screenshot maintenance notes
 - `data/`, `logs/`, `uploads/`, `volumes/`: runtime data, logs, uploaded files, and container volumes
 
@@ -224,6 +249,13 @@ OpsPilot/
 │   ├── memory_high_usage.md                  # Memory troubleshooting sample
 │   ├── service_unavailable.md                # Service-unavailable sample
 │   └── slow_response.md                      # Slow-response sample
+├── evals/                                    # Retrieval Eval
+│   ├── README.md                             # eval purpose, metrics, modes, and baselines
+│   ├── datasets/opspilot_rag_cases.jsonl     # fixed 10-case project-local dataset
+│   ├── run_retrieval_eval.py                 # Measurement / --ci runner
+│   ├── results/                              # latest raw results
+│   ├── reports/                              # latest Markdown report
+│   └── baselines/                            # frozen v1 / v1.1 artifacts
 ├── mcp_servers/                              # MCP services
 │   ├── cls_server.py                         # log query MCP server
 │   ├── monitor_server.py                     # monitoring MCP server
@@ -237,8 +269,12 @@ OpsPilot/
 │   ├── test_api_security.py                  # API authorization boundary tests
 │   ├── test_auth_service.py                  # auth service tests
 │   ├── test_intent_service.py                # intent routing tests
-│   ├── test_retrieval_service.py             # retrieval and rerank tests
-│   └── test_system_status_api.py             # system status API tests
+│   ├── test_retrieval_service.py             # retrieval, RRF, query-builder, and rerank tests
+│   ├── test_retrieval_eval_contract.py        # Eval Measurement / --ci contract tests
+│   ├── test_chat_stream_timing.py             # streaming timing tests
+│   ├── test_frontend_security.py              # frontend security-boundary tests
+│   ├── test_session_api.py                    # session API tests
+│   └── test_system_status_api.py              # system status API tests
 ├── docs/                                     # Supporting docs and assets
 │   └── assets/                               # screenshot assets and conventions
 │       ├── README.md                         # capture rules, naming, and checklist
@@ -263,7 +299,8 @@ OpsPilot/
 ## 📚 Documentation Index
 
 - [OpsPilot_demo_script.md](./OpsPilot_demo_script.md): demo flow, prompts, and speaking sequence
-- [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md): project explanation and interview prep
+- [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md): interview narrative, eval-driven engineering story, and Q&A prep
+- [evals/README.md](./evals/README.md): Retrieval Eval, Baseline v1/v1.1, and Measurement / --ci Contract
 - [mcp_servers/README.md](./mcp_servers/README.md): MCP service notes
 - [docs/assets/README.md](./docs/assets/README.md): screenshot asset maintenance guide
 
@@ -304,6 +341,13 @@ OpsPilot/
 | `MCP_MONITOR_URL` | Monitor MCP endpoint | `http://localhost:8004/mcp` |
 | `METRICS_ENABLED` | enables metrics collection | `True` |
 
+
+## 🔌 MCP Mock / Real Boundary
+
+The MCP protocol path is real: OpsPilot uses `MultiServerMCPClient` to connect two local FastMCP servers, and AIOps workflows persist tool-call records.
+
+The default log and monitoring data sources in this repository are reproducible mock data. The project does not ship with production Prometheus, real Tencent CLS, or MySQL integration enabled by default. `mcp_servers/` keeps the integration points where real data-source adapters can be added later.
+
 ## 🎯 AIOps Workflow
 
 1. **Planner** creates the diagnostic plan
@@ -330,9 +374,13 @@ Typical demo scenarios:
 
 - auth service tests
 - intent routing tests
-- hybrid retrieval and rerank tests
-- API authorization boundary tests
-- system status API tests
+- hybrid retrieval, RRF, query-builder, and rerank tests
+- Retrieval Eval Measurement / `--ci` Contract tests
+- streaming chat timing tests
+- API and frontend authorization-boundary tests
+- session API and system status API tests
+
+The repository has local testing and quality tooling configured. GitHub CI is not currently configured, so this README intentionally does not include a CI badge.
 
 ### ▶️ Run Tests
 
@@ -408,7 +456,19 @@ Use:
 
 ### 🔑 Can the project run without a DashScope API key?
 
-Yes. Services, tests, and the UI still run, but real chat quality, embeddings, and retrieval quality will degrade. Configure `DASHSCOPE_API_KEY` for a full demo.
+The UI, FastAPI service, and local unit tests can run, but full model and retrieval behavior cannot.
+
+| Capability | Without DashScope Key |
+|---|---|
+| UI / FastAPI | Starts |
+| Local unit tests | Can run |
+| Real LLM chat | Not available; returns missing-key guidance or lightweight fallback |
+| Embedding | Not available |
+| Dense indexing | Not available |
+| Full Hybrid Retrieval | Not formally available |
+| Retrieval Eval | Marked `INFRA_BLOCKED` |
+
+Sparse search depends on whether a local SQLite sparse index already exists, so it should not be treated as full Hybrid Retrieval availability. Configure `DASHSCOPE_API_KEY` for a full demo.
 
 ### 🐳 What should I do if `/health` reports Milvus errors?
 

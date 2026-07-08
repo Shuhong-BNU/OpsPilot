@@ -1,6 +1,6 @@
 # OpsPilot
 
-[简体中文](./README.md)
+[![中文文档](https://img.shields.io/badge/文档-中文-1677ff?style=for-the-badge)](./README.md) [![English README](https://img.shields.io/badge/Docs-English-2ea44f?style=for-the-badge)](./README.en.md)
 
 > An intelligent operations assistant built on RAG and MCP
 

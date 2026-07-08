@@ -1,6 +1,6 @@
 # OpsPilot
 
-[English](./README.en.md)
+[![中文文档](https://img.shields.io/badge/文档-中文-1677ff?style=for-the-badge)](./README.md) [![English README](https://img.shields.io/badge/Docs-English-2ea44f?style=for-the-badge)](./README.en.md)
 
 > 基于 RAG 与 MCP 的智能运维助手
 

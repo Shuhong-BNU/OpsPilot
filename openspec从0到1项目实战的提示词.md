@@ -761,7 +761,7 @@ contracts 增加 Tool input/output/citation 类型，但不需要暴露一个独
 - 启动脚本可从 JSON 把凭据传给官方 cls-mcp-server 所需进程环境，但应用本身仍不得从 env 读取项目配置。
 - 根 README 使用简体中文，准确列出当前已实现功能、目录、模板复制、URL、手动启动、全量验证；不得声称未实现能力。
 - docs/setup/macos.md、linux.md、windows.md 覆盖 Git/Docker/Node/npm/uv/官方 CLS MCP 安装。
-- docs/operations-and-monitoring.md 和 docs/tutorials/real-log-and-alert.md 明确普通启动与真实 fixture 副作用分离。
+- docs/operations-and-monitoring.md 和 docs/guides/real-log-and-alert.md 明确普通启动与真实 fixture 副作用分离。
 - 清理 app.Dockerfile、project.compose.json、create_compose_app 及所有死引用。
 
 最终自动门禁：openspec validate --all；contracts typecheck/test；backend alembic/Ruff/Pyright/pytest；frontend typecheck/test/build；docker compose config；git diff --check；macOS/Linux/Git Bash 另运行 `bash -n scripts/start-local.sh`，Windows 在 cmd/PowerShell 实机验证 start-local.bat，不把 Bash 当作 Windows 前置。测试必须在无真实 secret 的 fresh clone 通过：从模板创建 ignored local JSON，测试用 tmp_path 注入假配置，不能要求把凭据提交。

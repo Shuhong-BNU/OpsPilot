@@ -15,7 +15,7 @@ TBD - 由归档更改 create-readme 创建。归档后更新用途。
 - **THEN** 它 MUST 仅启动 etcd、MinIO、Milvus、Attu 和 Alertmanager。
 
 ### Requirement: Local configuration and operations reference
-仓库 SHALL 提供中文操作指南，将 `config/project.json` 和 `config/user.project.json` 定义为被 Git 忽略的本地运行配置，并将 `config/project.template.json` 和 `config/user.project.template.json` 定义为可安全跟踪的无凭据模板。指南 SHALL 为真实 CLS 日志上传和 Alertmanager/AIOps 固定装置提供单独、明确的中文教程。
+仓库 SHALL 提供中文操作指南，将 `config/project.json` 和 `config/user.project.json` 定义为被 Git 忽略的本地运行配置，并将 `config/project.template.json` 和 `config/user.project.template.json` 定义为可安全跟踪的无凭据模板。指南 SHALL 为真实 CLS 日志上传和 Alertmanager/AIOps 固定装置提供单独、明确的中文操作指南。
 
 #### Scenario: Recipient initializes local configuration
 - **WHEN** 项目接收方从新克隆开始配置项目
@@ -23,7 +23,7 @@ TBD - 由归档更改 create-readme 创建。归档后更新用途。
 
 #### Scenario: Developer uses log and monitoring fixtures
 - **WHEN** 开发者希望上传真实的 CLS 日志或创建本地 active-alert 演示
-- **THEN** 中文操作指南 MUST 链接到一个专用教程，该教程将显式脚本和 Alertmanager 命令与普通应用程序启动分开列出
+- **THEN** 中文操作指南 MUST 链接到一个专用操作指南，该操作指南将显式脚本和 Alertmanager 命令与普通应用程序启动分开列出
 
 ### Requirement: Cross-platform local launchers
 仓库 SHALL 提供了一个 macOS/Linux shell 启动器和一个 Windows 命令启动器，通过 Compose 准备本地依赖项，启动 etcd、MinIO、Milvus、Attu 和 Alertmanager，运行数据库迁移，并在主机上直接启动本地 CLS MCP 服务器、后端和前端，日志写入被忽略的本地运行时存储。启动器 user 面状态和错误文本应为中文，并且 MUST 应 MUST 打印凭证。

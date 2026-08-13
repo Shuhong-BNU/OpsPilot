@@ -8,7 +8,7 @@
 
 - 使 Compose 仅拥有本地容器化基础设施：etcd，MinIO，Milvus，Attu 和 Alertmanager。
 - 使每个平台启动器启动该精确的基础设施集，然后在主机上直接运行官方的 CLS MCP 服务器，FastAPI 后端和 Vue Vite 前端。
-- 提供中文的 Windows、Linux 和 macOS 安装指南，以及一个明确的真实日志和警报上传教程。
+- 提供中文的 Windows、Linux 和 macOS 安装指南，以及一个明确的真实日志和警报上传操作指南。
 - 为实时前端添加完整的 README 功能清单和基于浏览器的验收验证。
 
 **非目标：**
@@ -46,7 +46,7 @@ POSIX 和 Windows 启动器都将发出 `docker compose ... up -d etcd minio mil
 
 1. 首先为仅基础设施的 Compose 边界、新指南和完整的 README 清单更新测试。
 2. 移除 application/MCP Compose 服务并更新两个启动器。
-3. 添加 guides/tutorials 并修改 root/infra 文档。
+3. 添加运行操作文档并修改 root/infra 文档。
 4. 启动 Compose 基础设施和主机服务，然后通过真实的浏览器操作进行验证。
 5. 通过恢复之前的 Compose 服务定义进行回滚；持久化的 Milvus、MinIO 和 Alertmanager 卷保持不变。
 

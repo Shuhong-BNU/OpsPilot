@@ -15,9 +15,9 @@
 - **WHEN** 开发者打开 Windows 安装指南
 - **THEN** 它 MUST 提供 winget 或 PowerShell 安装命令和 Windows 启动器命令。
 
-### Requirement: Real log and alert upload tutorial
-仓库 SHALL 提供了一个中文教程，可区分普通启动与显式真实 CLS 日志上传、本地 Alertmanager 告警发布、SOP 索引以及告警驱动的 AIOps 诊断。
+### Requirement: Real log and alert upload guide
+仓库 SHALL 提供了一个中文操作指南，可区分普通启动与显式真实 CLS 日志上传、本地 Alertmanager 告警发布、SOP 索引以及告警驱动的 AIOps 诊断。
 
-#### Scenario: Developer follows the operations tutorial
+#### Scenario: Developer follows the operations guide
 - **WHEN** 一个开发者需要一个真实的电子商务数量事件演示
-- **THEN** 教程 MUST 提供了针对 CLS 日志、Alertmanager 警报和 SOP 索引脚本的精确明确命令，并描述了预期的 AIOps 证据链。
+- **THEN** 操作指南 MUST 提供了针对 CLS 日志、Alertmanager 警报和 SOP 索引脚本的精确明确命令，并描述了预期的 AIOps 证据链。

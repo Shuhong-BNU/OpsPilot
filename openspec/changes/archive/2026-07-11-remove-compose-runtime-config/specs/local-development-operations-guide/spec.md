@@ -9,4 +9,4 @@
 
 #### Scenario: Developer uses log and monitoring fixtures
 - **WHEN** 开发者希望上传真实的 CLS 日志或创建本地 active-alert 演示
-- **THEN** 中文操作指南 MUST 链接到一个专用教程，该教程将显式脚本和 Alertmanager 命令与普通应用程序启动分开列出。
+- **THEN** 中文操作指南 MUST 链接到一个专用操作指南，该操作指南将显式脚本和 Alertmanager 命令与普通应用程序启动分开列出。

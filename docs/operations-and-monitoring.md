@@ -26,4 +26,4 @@ cp config/user.project.template.json config/user.project.json
 
 ## 真实日志与本地告警样例
 
-真实 CLS 日志上传和本地 active-alert 演示属于显式运维流程，不是常规应用启动的一部分。请遵循[真实 CLS 日志与告警教程](tutorials/real-log-and-alert.md)，分别执行其中的日志上传脚本和本地告警命令。
+真实 CLS 日志上传和本地 active-alert 演示属于显式运维流程，不是常规应用启动的一部分。请遵循[真实 CLS 日志与告警操作指南](guides/real-log-and-alert.md)，分别执行其中的日志上传脚本和本地告警命令。

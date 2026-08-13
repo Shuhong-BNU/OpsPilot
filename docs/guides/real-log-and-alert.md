@@ -1,6 +1,6 @@
-# 真实 CLS 日志、告警与 SOP 教程
+# 真实 CLS 日志、告警与 SOP 操作指南
 
-本教程生成 10 套 Java 电商微服务故障。每套数据均包含唯一 trace ID、一条 CLS 关键日志、一条 Alertmanager 活动告警和一份处理 SOP，并通过一致的 `incident_id`、`service`、`alertname` 与 `sop` 字段关联。
+本指南生成 10 套 Java 电商微服务故障。每套数据均包含唯一 trace ID、一条 CLS 关键日志、一条 Alertmanager 活动告警和一份处理 SOP，并通过一致的 `incident_id`、`service`、`alertname` 与 `sop` 字段关联。
 
 完整场景及根因说明见 [Java 电商微服务 AIOps 测试数据](../aiops/ecommerce-aiops-fixture.md)。
 

@@ -29,7 +29,7 @@ config/                 可提交模板和被忽略的本地 JSON 配置
 infra/                  etcd、MinIO、Milvus、Attu、Alertmanager 的 Compose 资产
 scripts/                macOS/Linux 与 Windows 本机启动器、文档图生成器
 openspec/               主规格、活动变更和归档
-docs/                   VitePress 文档、安装指南、教程与 OpenSpec WIKI
+docs/                   VitePress 文档、安装指南、操作指南与 OpenSpec WIKI
 ```
 
 不要在仓库中另建平行的后端包、前端应用或重复契约目录。后端模块必须位于 `apps/backend/src/opspilot/`，并使用 `from opspilot...` 导入，绝不能使用 `from src.opspilot...`。

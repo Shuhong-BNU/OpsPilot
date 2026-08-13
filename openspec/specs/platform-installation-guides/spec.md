@@ -18,9 +18,9 @@ TBD - 由归档更改 refacto-local-project-startup 创建。在归档后更新�
 - **WHEN** 开发者打开 Windows 安装指南  
 - **THEN** 它 MUST 提供 winget 或 PowerShell 安装命令和 Windows 启动器命令。
 
-### Requirement: Real log and alert upload tutorial
-仓库 SHALL 提供了一个中文教程，可区分普通启动与显式真实 CLS 日志上传、本地 Alertmanager 警报发布、SOP 索引以及警报驱动的 AIOps 诊断。
+### Requirement: Real log and alert upload guide
+仓库 SHALL 提供了一个中文操作指南，可区分普通启动与显式真实 CLS 日志上传、本地 Alertmanager 警报发布、SOP 索引以及警报驱动的 AIOps 诊断。
 
-#### Scenario: Developer follows the operations tutorial
+#### Scenario: Developer follows the operations guide
 - **WHEN** 开发人员需要一个真实的电子商务量化事件演示
-- **THEN** 教程 MUST 为 CLS 日志、Alertmanager 警报和 SOP 索引脚本提供了确切的显式命令，并描述了预期的 AIOps 证据链。
+- **THEN** 操作指南 MUST 为 CLS 日志、Alertmanager 警报和 SOP 索引脚本提供了确切的显式命令，并描述了预期的 AIOps 证据链。

@@ -49,6 +49,6 @@ scripts\start-local.bat
 - `config/project.json`：直接本机开发使用。
 - `infra/compose.yaml`：只描述容器基础设施。
 
-私有仓库允许在受版本控制的配置文件中保存开发模型与 CLS 凭据。应用代码不会读取本机 `.env` 文件。
+即使仓库是私有仓库，也不得在受版本控制的文件中保存模型密钥、CLS 凭据或其他敏感配置。应用代码不会读取本机 `.env` 文件。
 
-文档上传与知识索引都是运行时工作流，绝不会在启动时自动执行。真实 CLS 日志上传与 Alertmanager 样例请遵循[真实日志与告警教程](../docs/tutorials/real-log-and-alert.md)。Compose 栈不会部署外部日志、链路追踪或云可观测性后端。
+文档上传与知识索引都是运行时工作流，绝不会在启动时自动执行。真实 CLS 日志上传与 Alertmanager 样例请遵循[真实日志与告警操作指南](../docs/guides/real-log-and-alert.md)。Compose 栈不会部署外部日志、链路追踪或云可观测性后端。

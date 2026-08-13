@@ -9,16 +9,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 def test_root_readme_documents_local_first_startup_and_optional_compose() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "## 本地开发" in readme
-    assert (
-        "docker compose -f infra/compose.yaml up -d etcd minio milvus attu alertmanager"
-        in readme
-    )
+    assert "## 快速开始" in readme
+    assert "## 离线 Retrieval Eval v2" in readme
+    assert "docker" in readme.lower()
     assert "scripts/start-local.sh" in readme
     assert "scripts\\start-local.bat" in readme
-    assert "Docker Compose **只**负责" in readme
-    assert "## 当前功能" in readme
-    for feature in ("用户认证", "流式聊天", "知识库", "AIOps", "活跃告警", "运行状态检查"):
+    for feature in ("Agent 对话", "权限化 RAG", "AIOps 诊断", "真实 MCP 工具"):
         assert feature in readme
 
 
@@ -82,7 +78,7 @@ def test_posix_launcher_has_valid_shell_syntax() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_platform_installation_guides_and_log_alert_tutorial_exist() -> None:
+def test_platform_installation_guides_and_log_alert_guide_exist() -> None:
     for guide_name, command in (
         ("macos.md", "brew install"),
         ("linux.md", "apt"),
@@ -93,7 +89,7 @@ def test_platform_installation_guides_and_log_alert_tutorial_exist() -> None:
         assert "scripts" in guide
         assert command in guide
 
-    tutorial = (REPO_ROOT / "docs" / "tutorials" / "real-log-and-alert.md").read_text(
+    guide = (REPO_ROOT / "docs" / "guides" / "real-log-and-alert.md").read_text(
         encoding="utf-8"
     )
     for expected in (
@@ -102,4 +98,4 @@ def test_platform_installation_guides_and_log_alert_tutorial_exist() -> None:
         "seed_java_ecommerce_aiops_sops.py",
         "SearchLog",
     ):
-        assert expected in tutorial
+        assert expected in guide

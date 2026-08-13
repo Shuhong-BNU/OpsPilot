@@ -11,17 +11,17 @@
 
 OpsPilot 将流式 Agent 对话、受权限控制的知识检索、真实日志 MCP、告警驱动诊断和可追溯报告整合为一个可本机运行的运维工作台。项目的目标是让一次诊断从告警、检索、工具调用到结论都保留可检查的证据。
 
-## 核心能力
+## ✨ 核心亮点
 
-- **Agent 对话**：基于 LangChain `create_agent`、Qwen 与 SSE 的流式对话；支持会话、Prompt、Skill、记忆压缩、引用和反馈。
-- **权限化 RAG**：Milvus 向量召回、BM25L、RRF 融合与 Qwen rerank；知识库、文档、向量和引用均受当前用户与 tenant 范围约束。
-- **AIOps 诊断**：LangGraph `Plan -> Execute -> Replan -> Report` 图编排，支持从活动告警建立持久化诊断任务，输出步骤、证据和 Markdown 报告。
-- **真实 MCP 工具**：通过腾讯云官方 CLS MCP Server 查询真实日志；支持用户级 MCP 连接配置、连通性检查、重试、超时、同名工具保护与调用审计。
-- **可恢复运行时**：SQLite durable job runtime 管理诊断和索引任务的租约、心跳、重试、超时、取消和重启恢复。
-- **前后端契约**：HTTP、错误码、OpenAPI 与 SSE 类型集中在共享 TypeScript contracts，避免前后端接口漂移。
-- **离线检索 Eval v2**：用固定题集验证生产检索编排的回归行为，并输出每个候选在 vector、BM25、RRF 与 rerank 阶段的排序证据。
+- 🤖 **Agent 对话**：基于 LangChain `create_agent`、Qwen 与 SSE 的流式对话；支持会话、Prompt、Skill、记忆压缩、引用和反馈。
+- 📚 **权限化 RAG**：Milvus 向量召回、BM25L、RRF 融合与 Qwen rerank；知识库、文档、向量和引用均受当前用户与 tenant 范围约束。
+- 🔧 **AIOps 诊断**：LangGraph `Plan -> Execute -> Replan -> Report` 图编排，支持从活动告警建立持久化诊断任务，输出步骤、证据和 Markdown 报告。
+- 🔌 **真实 MCP 工具**：通过腾讯云官方 CLS MCP Server 查询真实日志；支持用户级 MCP 连接配置、连通性检查、重试、超时、同名工具保护与调用审计。
+- 💾 **可恢复运行时**：SQLite durable job runtime 管理诊断和索引任务的租约、心跳、重试、超时、取消和重启恢复。
+- 🔗 **前后端契约**：HTTP、错误码、OpenAPI 与 SSE 类型集中在共享 TypeScript contracts，避免前后端接口漂移。
+- 📏 **离线检索 Eval v2**：用固定题集验证生产检索编排的回归行为，并输出每个候选在 vector、BM25、RRF 与 rerank 阶段的排序证据。
 
-## 架构
+## 🧱 分层架构
 
 ```text
 Vue 3 workspace
@@ -42,7 +42,7 @@ Milvus: user-scoped document vectors
 CLS MCP: real cloud log tools
 ```
 
-## 技术栈
+## 🛠️ 技术栈
 
 | 领域 | 实现 | 作用 |
 | --- | --- | --- |
@@ -53,7 +53,7 @@ CLS MCP: real cloud log tools
 | 集成 | 腾讯云 CLS MCP Server、Prometheus、Alertmanager | 真实日志、指标与活动告警 |
 | 工程质量 | uv、pytest、Ruff、Pyright、Vitest | 依赖管理、测试与静态检查 |
 
-## 离线 Retrieval Eval v2
+## 📏 离线 Retrieval Eval v2
 
 Eval v2 是新版 OpsPilot 的确定性检索回归评测，不调用任何 AI API。它使用 5 份项目内 SOP 语料和 10 道预先标注正确来源的问题，复用生产 `KnowledgeRetrievalTool` 的权限过滤、BM25L、RRF、结果组装和阶段证据逻辑。
 
@@ -75,9 +75,9 @@ uv run python ../../evals/run_retrieval_eval.py
 
 输入和输出分别位于 `evals/datasets/`、`evals/corpus/`、`evals/results/`、`evals/reports/`；迁移前旧实现的 v1/v1.1 结果保存在 `evals/baselines/`，仅作历史追溯，不与 v2 横向比较。详见 [evals/README.md](./evals/README.md)。
 
-## 快速开始
+## 🚀 快速开始
 
-### 环境要求
+### 🧰 环境要求
 
 - Git、Docker Desktop、Node.js/npm、[uv](https://docs.astral.sh/uv/)
 - 官方 `cls-mcp-server`（需要真实 CLS MCP 时）
@@ -122,9 +122,7 @@ scripts\start-local.bat
 
 更多安装与配置说明： [macOS](docs/setup/macos.md)、[Linux](docs/setup/linux.md)、[Windows](docs/setup/windows.md)、[配置与运维](docs/operations-and-monitoring.md)。
 
-## 项目结构
-
-完整到每个 Git 跟踪文件的用途说明见 [仓库文件索引](docs/repository-file-index.md)。
+## 🗂️ 项目结构
 
 ```text
 OpsPilot/
@@ -158,7 +156,7 @@ OpsPilot/
 | `opspilot/evaluation/` | Eval v2 的确定性 adapter 和评分逻辑 |
 | `apps/backend/alembic/` | SQLite schema migration revisions |
 
-## 常用验证命令
+## 🧪 常用验证命令
 
 ```bash
 # 根目录：前端、共享契约、文档与规格
@@ -176,11 +174,11 @@ uv run pyright
 uv run pytest
 ```
 
-## 真实日志与告警操作
+## 📡 真实日志与告警操作
 
 上传测试 CLS 日志、发布本地 Alertmanager 告警、索引关联 SOP 与执行完整 AIOps 诊断均为显式操作，不属于日常启动流程。请参阅 [真实日志与告警操作指南](docs/guides/real-log-and-alert.md)。
 
-## 安全边界
+## 🔐 安全边界
 
 - 不提交 `config/project.json`、`config/user.project.json`、API Key、CLS 凭据、用户数据或运行日志。
 - 不使用 mock 日志或虚构诊断替代真实 CLS MCP 工具结果。

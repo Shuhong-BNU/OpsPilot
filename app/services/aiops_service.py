@@ -1,6 +1,6 @@
 """
 通用 Plan-Execute-Replan 服务
-基于 LangGraph 官方教程实现
+基于 LangGraph 的 AIOps 服务实现
 """
 
 from typing import AsyncGenerator, Dict, Any

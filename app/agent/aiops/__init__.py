@@ -1,6 +1,6 @@
 """
 通用 Plan-Execute-Replan 框架
-基于 LangGraph 官方教程实现
+基于 LangGraph 的 AIOps 工作流实现
 """
 
 from .state import PlanExecuteState

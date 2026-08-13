@@ -1,6 +1,6 @@
 """
 通用 Plan-Execute-Replan 状态定义
-基于 LangGraph 官方教程实现
+基于 LangGraph 的 AIOps 工作流状态定义
 """
 
 from typing import List, TypedDict, Annotated

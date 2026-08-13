@@ -124,6 +124,8 @@ scripts\start-local.bat
 
 ## 项目结构
 
+完整到每个 Git 跟踪文件的用途说明见 [仓库文件索引](docs/repository-file-index.md)。
+
 ```text
 OpsPilot/
 ├── apps/

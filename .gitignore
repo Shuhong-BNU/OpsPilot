@@ -29,3 +29,4 @@ config/user.project.json
 # Local-only career planning and private change rationale.
 docs/roadmap/agent-internship-optimization-roadmap.md
 openspec/changes/migrate-opspilot-platform-and-add-offline-eval/proposal.md
+openspec从0到1项目实战的提示词.md

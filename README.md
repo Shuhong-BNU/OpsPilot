@@ -1,490 +1,200 @@
 # OpsPilot
 
-[![中文文档](https://img.shields.io/badge/文档-中文-1677ff?style=for-the-badge)](./README.md) [![English README](https://img.shields.io/badge/Docs-English-2ea44f?style=for-the-badge)](./README.en.md)
+OpsPilot 是一个本地优先的 AIOps 工作台。Vue 3 提供操作界面，FastAPI 提供 API 与 Agent 运行时，SQLite 保存用户归属的数据，Milvus 保存受权限控制的知识向量，腾讯云官方 CLS MCP Server 提供真实日志访问。
 
-> 基于 RAG 与 MCP 的智能运维助手
+## 当前功能
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)](https://fastapi.tiangolo.com/)
-[![Milvus](https://img.shields.io/badge/Milvus-Vector%20DB-00B388.svg)](https://milvus.io/)
-[![Pytest](https://img.shields.io/badge/Tested%20with-pytest-0A9EDC.svg)](https://pytest.org/)
+以下能力均已在当前代码中实现，不包含尚未落地的规划项。
 
-OpsPilot 将对话问答、知识检索、AIOps 诊断和 MCP 工具协同收拢到一套可运行、可演示、可扩展的运维工作台。它既能作为运维 Agent 的项目范例，也适合用于演示检索增强、诊断编排、权限边界和运行状态可视化。
+### 账号、权限与工作台
 
-## ✨ 核心亮点
+- **用户认证**：支持注册、登录、登出、认证状态恢复和当前用户信息查询；密码使用 Argon2 安全哈希，不保存明文。
+- **用户与 tenant 隔离**：聊天、消息、知识库、文档、向量、索引任务、MCP 连接、AIOps、证据、报告、反馈和工具审计均按当前用户隔离，越权访问返回统一权限错误。
+- **中文响应式工作台**：提供对话、知识库、智能诊断和 MCP 连接四个受保护路由，桌面与移动端共用一致导航和状态表达。
+- **统一操作反馈**：成功、提示和错误消息使用全局反馈组件展示，支持手动关闭并在 3 秒后自动消失。
 
-- 🤖 **对话工作台**：普通问答、流式输出、会话历史和执行轨迹统一在同一界面完成
-- 🧭 **意图分流**：按 `smalltalk / simple_qa / knowledge_qa / aiops_diagnosis / unsupported` 切换处理链路
-- 📚 **混合检索**：组合 `Milvus dense recall + SQLite FTS5 sparse recall + RRF + lightweight lexical-overlap rerank`
-- 📏 **Eval-driven Retrieval**：固定 10 条项目内离线样例，跟踪 Hit@3、MRR、PASS / FAIL / INFRA_BLOCKED 与 frozen baselines
-- 🔧 **AIOps 诊断**：基于 `Plan-Execute-Replan` 自动拆解排障步骤并输出诊断结果
-- 🔌 **MCP 集成**：同时接入日志查询和监控查询能力，保留工具调用记录
-- 💾 **状态持久化**：会话、消息、工作流和工具日志统一落在 SQLite
-- 🔐 **权限分层**：`viewer / operator / admin` 角色边界清晰，敏感操作默认受控
-- 🪟 **状态面板**：前端可直接查看模型配置、依赖可用性、访问地址和服务健康度
-- 🧪 **关键链路测试**：覆盖鉴权、检索、接口权限和系统状态接口
+### 流式聊天与 Agent
 
-## 🧱 分层设计
+- **持久化会话**：支持创建、切换、倒序查询、自动生成标题、清空和删除会话；SQLite 是会话与消息的主存储。
+- **流式聊天**：使用 `langchain` `create_agent`、OpenAI-compatible Qwen 和 SSE 输出内容增量、工具调用、引用、完成与错误事件，前端以可感知的打字机节奏渲染回答。
+- **自主工具调用**：模型根据问题自行决定是否调用知识库、当前时间或已启用 MCP 工具，不把 RAG 固定为每次对话的前置流程。
+- **Prompt 配置**：用户可以创建、编辑、选择和删除会话使用的系统 Prompt，服务端负责组装最终 system prompt。
+- **渐进式 Skill**：支持上传和选择符合 `SKILL.md` 规范的 Skill；初始上下文只注入 `name` 与 `description`，模型需要时再通过 `load_skill` 加载正文。
+- **会话级记忆模式**：每个会话可独立选择“每 30 轮压缩”“上下文占用 70% 自动压缩”或“手动压缩”，输入框旁展示上下文窗口占用率；压缩只生成摘要，不删除完整历史。
+- **推理与工具过程**：回答可折叠展示推理上下文、工具调用状态和结果摘要，工具调用同时写入 SQLite 审计记录。
+- **内容反馈**：用户可对助手回答和单条知识引用点赞、点踩，填写问题类型、评论和纠正内容；反馈可更新、删除并在重新打开会话后恢复。
 
-- 🖥️ **前端层**：`static/` 提供单页工作台，负责会话、流式渲染、执行轨迹和系统状态展示
-- 🌐 **接口层**：`app/api/` 暴露登录、对话、AIOps、文档上传、会话管理、健康检查和状态查询接口
-- 🧠 **服务层**：`app/services/` 封装意图识别、RAG 检索、工作流编排、数据库访问和指标采集
-- 🤝 **Agent 层**：`app/agent/` 管理 MCP 客户端和 AIOps 规划执行节点
-- 🧰 **工具层**：`app/tools/` 为 Agent 暴露知识检索、时间等可调用工具
-- 🗃️ **数据层**：SQLite 负责结构化状态，Milvus 负责向量索引，`aiops-docs/` 提供知识样本
+### 知识库、索引与 RAG
 
-## 🛠️ 技术栈
+- **文档管理**：支持上传 Markdown 和 PDF，记录文件名、大小、MIME、SHA-256、上传时间与索引状态；支持重复文件检测、明确覆盖和删除时同步清理向量。
+- **切分策略与预览**：上传前可选择固定字符、Markdown 标题或段落切分；固定字符支持长度和重叠参数，前端可预览有界 chunk 结果。
+- **持久索引任务**：文档索引在后台执行，状态包含排队、执行中、成功、失败和取消；失败原因会持久化，并支持手动重试和重建索引。
+- **Embedding 与 Milvus**：调用配置的 Embedding 模型生成向量，写入 Milvus HNSW/COSINE collection；chunk metadata 包含文档、来源、切分参数和 owner/user/tenant 权限字段。
+- **混合召回与精排**：Milvus 向量搜索与内存 BM25L 关键词检索并行召回，通过 RRF（`k=60`）融合候选，再调用 Qwen rerank 模型精排。
+- **完整检索可解释性**：引用同时展示向量排名与相似度、BM25 排名与分数、RRF 分数、rerank 排名与分数，以及文档来源、chunk 摘要和 metadata。
+- **受控知识工具**：知识检索以 LangChain Tool 提供给 Agent，支持 `topK` 和知识库过滤；检索始终附带当前用户权限条件，无命中时返回空结果而不是编造内容。
 
-### ⚡ 一眼看懂版
+### AIOps 智能诊断
 
-- **框架**：FastAPI + LangChain + LangGraph
-- **LLM**：DashScope / Qwen
-- **检索**：Milvus + SQLite FTS5 + RRF + rerank
-- **状态存储**：SQLite
-- **工具协议**：MCP / FastMCP
-- **工程化**：pytest + ruff + black + mypy + Loguru
+- **Plan-Execute-Replan**：使用 LangGraph 实现 `Planner -> Executor -> Replanner -> Report`，Planner 先检索 SOP，Executor 调用真实工具，Replanner 决定继续、调整或生成报告。
+- **真实告警入口**：聚合 Prometheus v1 和 Alertmanager v2 活跃告警，用户可刷新告警并从某条告警直接创建诊断任务。
+- **持久后台执行**：诊断由 SQLite durable job runtime 调度，不阻塞 API；页面展示排队、执行、取消、失败和完成状态，并支持用户取消任务。
+- **诊断 SSE**：实时输出计划、步骤、工具调用、证据、重规划、报告、完成和错误事件；断开后可根据持久化事件和任务数据恢复。
+- **证据链与报告**：持久化原始输入、计划、执行步骤、工具调用、日志/指标/告警/知识引用证据、checkpoint 和 Markdown 报告，报告结论可追溯到证据。
+- **诊断历史与案例库**：支持按用户查询历史任务和完整证据链；成功诊断可自动或手动沉淀为用户知识库中的故障案例并参与后续检索。
+- **诊断反馈**：用户可对单个诊断步骤和最终报告提交可恢复的结构化反馈。
 
-### 🧩 详细技术栈
+### MCP 与外部系统
 
-| 类别 | 技术 | 作用 |
-|---|---|---|
-| Web 框架 | FastAPI、Uvicorn、sse-starlette | 提供 REST API、SSE 流式对话和 AIOps 流式诊断 |
-| LLM / Agent | LangChain、LangGraph、DashScope / Qwen、langchain-qwq | 对话 Agent、AIOps 工作流、工具调用与规划执行 |
-| 检索增强 | Milvus、SQLite FTS5、RRF、轻量 lexical-overlap rerank | 稠密召回、稀疏召回、候选融合与当前代码中的轻量重排 |
-| 工具集成 | MCP、FastMCP、langchain-mcp-adapters | 接入日志查询、监控查询等外部工具 |
-| 状态与数据 | SQLite | 会话、消息、工作流、工具日志、文档切片持久化 |
-| 工程化 | pytest、pytest-cov、ruff、black、mypy、Loguru | 测试、代码质量、日志与运行时可观测性 |
+- **真实 CLS MCP**：本机运行腾讯云官方 `cls-mcp-server`，后端通过 SSE 调用真实 CLS 日志、告警、指标和辅助工具，不提供 mock profile 或伪造结果。
+- **用户级 MCP 连接管理**：前端支持创建、编辑、启停和删除多个 MCP Server，配置 SSE 或 Streamable HTTP、URL、超时和重试次数。
+- **连接检查与工具发现**：可从页面检查 MCP Server，展示真实连接结果和工具列表；聊天与 AIOps 共用同一份当前用户连接配置。
+- **调用治理**：MCP 支持超时、重试、同名工具保护和明确失败；每次调用记录工具名、参数、结果摘要、耗时、状态、错误及关联会话或诊断任务。
 
-## 📏 Retrieval Eval Baseline
+### 后台任务、存储与平台能力
 
-OpsPilot 当前包含一个 retrieval-only 离线评测入口，用固定 10 条项目内样例评估真实 `hybrid_search` 链路：
+- **Durable job runtime**：SQLite 保存后台任务、事件、尝试次数和租约；Worker 支持并发领取、心跳续租、进程重启恢复、指数退避重试、超时和协作式取消。
+- **Repository 存储边界**：SQLAlchemy 模型和 Repository 隔离业务层与 SQLite 细节，Alembic 管理迁移，并为后续替换 PostgreSQL 保留边界。
+- **统一 API 契约**：`packages/api-contracts` 是前后端共享的 HTTP、错误码、OpenAPI 和 SSE 类型来源，覆盖认证、聊天、知识库、后台任务、反馈、MCP 和 AIOps。
+- **运行状态检查与指标**：`/health` 检查存活，`/ready` 检查 SQLite、Milvus、Qwen 与 MCP，`/config/check` 校验项目配置，`/metrics` 暴露本地请求指标。
+- **结构化可观测性**：请求日志包含 request id、路径、状态和耗时；敏感字段统一脱敏，Agent/MCP 工具调用有独立审计生命周期。
+- **真实演示数据工具**：提供显式脚本上传 Java 电商事故 CLS 日志、发布本地告警和索引 SOP，可完成“告警 -> 诊断 -> 证据 -> 报告 -> 案例知识”的完整演示。
+- **本地优先启动**：Docker Compose 仅托管 etcd、MinIO、Milvus、Attu 和 Alertmanager；前端、后端与 CLS MCP Server 使用 macOS/Linux/Windows 本机启动脚本运行。
 
-```text
-fixed dataset -> Milvus dense -> SQLite FTS5 sparse -> RRF -> lightweight rerank -> final top3
-```
+## 前端入口
 
-这不是通用 benchmark，而是用于防止项目内检索链路只靠 Demo 判断的固定回归样例。
+| 路径 | 功能 |
+|------|------|
+| `/login`、`/register` | 登录与注册 |
+| `/chat` | 会话、流式 Agent、Prompt、Skill、记忆模式、引用和反馈 |
+| `/knowledge` | 文档上传、切分预览、索引、重试、详情和删除 |
+| `/aiops` | 活跃告警、实时诊断、执行链、证据、报告和案例库 |
+| `/mcp` | MCP 连接配置、启停、检查与工具发现 |
 
-| Metric | Baseline v1 | Baseline v1.1 |
-|---|---:|---:|
-| Scorable | 10/10 | 10/10 |
-| Hit@3 | 1.000 | 1.000 |
-| MRR | 0.950 | 1.000 |
-| Sparse non-empty | 0/10 | 4/10 |
-| Sparse relevant hit | 0/10 | 4/10 |
-
-工程主线：Baseline v1 通过 trace 发现 sparse 贡献为 0/10，随后定位到 FTS5 中文 tokenizer 限制与 multi-token strict AND 查询过严；通过 AND vs quoted OR 单变量实验后，仅修改 sparse query builder，建立 Baseline v1.1。
-
-Eval runner 默认是 Measurement 模式：能力 FAIL 会写入报告但退出码仍为 0；`--ci` 模式用于门禁：能力 FAIL 返回 1，INFRA_BLOCKED 始终返回 2。详见 [evals/README.md](./evals/README.md)。
-
-## 🚀 快速开始
-
-### 🧰 环境要求
-
-- Python `3.11+`
-- Docker Desktop
-- DashScope API Key（需要真实模型与 Embedding 能力时再配置）
-
-### 🐧 Linux / macOS
-
-```bash
-git clone https://github.com/Shuhong-BNU/OpsPilot.git
-cd OpsPilot
-
-cp .env.example .env
-
-python -m venv .venv
-source .venv/bin/activate
-
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-
-docker compose -f vector-database.yml up -d
-make start
-```
-
-### 🪟 Windows PowerShell
-
-```powershell
-git clone https://github.com/Shuhong-BNU/OpsPilot.git
-cd OpsPilot
-
-Copy-Item .env.example .env
-Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-
-.\start-windows.bat
-```
-
-如需手动启动：
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-
-docker compose -f vector-database.yml up -d
-.\.venv\Scripts\python.exe mcp_servers\cls_server.py
-.\.venv\Scripts\python.exe mcp_servers\monitor_server.py
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 9900
-```
-
-## 🔐 演示账号
-
-| 角色 | 用户名 | 密码 |
-|---|---|---|
-| `viewer` | `viewer` | `viewer123` |
-| `operator` | `operator` | `operator123` |
-| `admin` | `admin` | `admin123` |
-
-## 🌐 访问入口
-
-- **Web 界面**：`http://localhost:9900`
-- **API 文档**：`http://localhost:9900/docs`
-- **健康检查**：`http://localhost:9900/health`
-- **指标接口**：`http://localhost:9900/metrics`
-- **系统状态接口**：`GET /api/system/status`
-
-## 📡 API 速览
-
-| 功能 | 方法 | 路径 | 说明 |
-|---|---|---|---|
-| 登录 | `POST` | `/api/auth/login` | 返回 JWT 与角色信息 |
-| 当前用户 | `GET` | `/api/auth/me` | 校验登录态 |
-| 普通对话 | `POST` | `/api/chat` | 意图路由后一次性返回结果 |
-| 流式对话 | `POST` | `/api/chat_stream` | SSE 输出 route / content / done |
-| 清空会话 | `POST` | `/api/chat/clear` | 清空单个会话 |
-| 会话详情 | `GET` | `/api/chat/session/{session_id}` | 获取历史消息 |
-| 会话列表 | `GET` | `/api/sessions` | 获取当前用户全部会话 |
-| 会话详情 | `GET` | `/api/sessions/{session_id}` | 获取单个会话及历史消息 |
-| 删除会话 | `DELETE` | `/api/sessions/{session_id}` | 删除单个会话 |
-| AIOps 诊断 | `POST` | `/api/aiops` | `operator/admin` 可访问，流式诊断 |
-| 文件上传 | `POST` | `/api/upload` | `operator/admin` 可访问，自动索引文档 |
-| 批量索引 | `POST` | `/api/index_directory` | `operator/admin` 可访问，批量索引目录 |
-| 系统状态 | `GET` | `/api/system/status` | 返回模型、依赖和访问地址状态 |
-| 健康检查 | `GET` | `/health` | 检查 API / Milvus / SQLite |
-| 指标快照 | `GET` | `/metrics` | 返回 JSON 指标；`?format=prometheus` 返回 Prometheus-format text |
-
-## 🗂️ 项目结构
-
-### 🧭 目录职责速览
-
-- `app/`：应用核心，包含接口、服务、Agent、模型和工具实现
-- `aiops-docs/`：运维知识样本，适合做检索和诊断演示
-- `mcp_servers/`：日志查询与监控查询两个 MCP 服务
-- `static/`：单页前端工作台
-- `tests/`：核心接口、服务、前端安全、流式时序与 Eval Contract 测试
-- `evals/`：Retrieval Eval dataset、runner、latest results/report 与 frozen baselines
-- `docs/assets/`：截图素材和素材维护说明
-- `data/`、`logs/`、`uploads/`、`volumes/`：运行时生成的数据、日志、上传缓存和容器卷目录
-
-### 🧩 逐目录逐文件索引
+## 项目结构
 
 ```text
-OpsPilot/
-├── app/                                      # 应用核心
-│   ├── __init__.py                           # 包初始化
-│   ├── main.py                               # FastAPI 入口、路由注册、静态资源挂载
-│   ├── config.py                             # 应用、模型、检索、MCP、监控配置
-│   ├── api/                                  # HTTP 接口层
-│   │   ├── __init__.py                       # API 包初始化
-│   │   ├── auth.py                           # 登录与当前用户接口
-│   │   ├── chat.py                           # 普通对话与流式对话接口
-│   │   ├── aiops.py                          # AIOps 流式诊断接口
-│   │   ├── file.py                           # 文档上传与目录索引接口
-│   │   ├── health.py                         # 健康检查接口
-│   │   ├── metrics.py                        # JSON / Prometheus 指标接口
-│   │   ├── sessions.py                       # 会话列表、详情、删除接口
-│   │   ├── system.py                         # 系统状态与依赖就绪信息接口
-│   │   └── dependencies.py                   # 鉴权与角色依赖
-│   ├── services/                             # 业务服务层
-│   │   ├── __init__.py                       # 服务包初始化
-│   │   ├── auth_service.py                   # 默认账号、密码校验、JWT 生成
-│   │   ├── chat_service.py                   # 对话主入口与链路调度
-│   │   ├── intent_service.py                 # 意图识别与规则分流
-│   │   ├── rag_agent_service.py              # RAG Agent 与工具调用编排
-│   │   ├── aiops_service.py                  # AIOps 工作流编排
-│   │   ├── retrieval_service.py              # 混合检索、RRF、rerank、trace 记录
-│   │   ├── session_service.py                # 会话、消息、工作流持久化
-│   │   ├── database_service.py               # SQLite 建表、查询、FTS5 检索
-│   │   ├── metrics_service.py                # 运行指标采集与输出
-│   │   ├── runtime_status_service.py         # 聚合系统状态、模型配置和依赖可用性
-│   │   ├── request_context_service.py        # 请求上下文工具
-│   │   ├── vector_store_manager.py           # Milvus VectorStore 封装
-│   │   ├── vector_embedding_service.py       # DashScope Embedding 封装
-│   │   ├── vector_index_service.py           # 文档读取、切片、索引构建
-│   │   ├── vector_search_service.py          # 向量检索能力
-│   │   └── document_splitter_service.py      # Markdown / 文本文档切片
-│   ├── agent/                                # Agent 协同层
-│   │   ├── __init__.py                       # Agent 包初始化
-│   │   ├── mcp_client.py                     # MultiServer MCP 客户端
-│   │   └── aiops/                            # AIOps 工作流节点
-│   │       ├── __init__.py                   # AIOps 节点包初始化
-│   │       ├── planner.py                    # 规划节点
-│   │       ├── executor.py                   # 工具执行节点
-│   │       ├── replanner.py                  # 重规划节点
-│   │       ├── state.py                      # 工作流状态定义
-│   │       └── utils.py                      # 节点辅助函数
-│   ├── models/                               # Pydantic 数据模型
-│   │   ├── __init__.py                       # 模型包初始化
-│   │   ├── auth.py                           # 登录请求与响应模型
-│   │   ├── request.py                        # 对话与清空请求模型
-│   │   ├── response.py                       # 通用响应模型
-│   │   ├── aiops.py                          # AIOps 请求与响应模型
-│   │   ├── session.py                        # 会话响应模型
-│   │   └── document.py                       # 文档索引相关模型
-│   ├── tools/                                # Agent 可调用工具
-│   │   ├── __init__.py                       # 工具包初始化
-│   │   ├── knowledge_tool.py                 # 知识检索工具
-│   │   └── time_tool.py                      # 时间工具
-│   ├── core/                                 # 底层能力封装
-│   │   ├── __init__.py                       # Core 包初始化
-│   │   ├── llm_factory.py                    # LLM 创建工厂
-│   │   └── milvus_client.py                  # Milvus 连接与 collection 管理
-│   └── utils/                                # 通用工具
-│       ├── __init__.py                       # Utils 包初始化
-│       └── logger.py                         # Loguru 日志初始化
-├── aiops-docs/                               # 运维知识样本
-│   ├── cpu_high_usage.md                     # CPU 高负载排障样本
-│   ├── disk_high_usage.md                    # 磁盘过高排障样本
-│   ├── memory_high_usage.md                  # 内存异常排障样本
-│   ├── service_unavailable.md                # 服务不可用排障样本
-│   └── slow_response.md                      # 慢响应排障样本
-├── evals/                                    # Retrieval Eval
-│   ├── README.md                             # Eval 目标、指标、模式和 baseline 说明
-│   ├── datasets/opspilot_rag_cases.jsonl     # 固定 10 条项目内离线样例
-│   ├── run_retrieval_eval.py                 # Measurement / --ci runner
-│   ├── results/                              # latest raw results
-│   ├── reports/                              # latest Markdown report
-│   └── baselines/                            # frozen v1 / v1.1 artifacts
-├── mcp_servers/                              # MCP 服务
-│   ├── cls_server.py                         # 日志查询 MCP 服务
-│   ├── monitor_server.py                     # 监控查询 MCP 服务
-│   └── README.md                             # MCP 服务说明
-├── static/                                   # 前端工作台
-│   ├── index.html                            # 页面结构
-│   ├── app.js                                # 前端交互逻辑、状态面板、执行轨迹
-│   └── styles.css                            # 视觉样式
-├── tests/                                    # 自动化测试
-│   ├── conftest.py                           # 测试夹具与公共初始化
-│   ├── test_api_security.py                  # API 权限边界测试
-│   ├── test_auth_service.py                  # 鉴权服务测试
-│   ├── test_intent_service.py                # 意图识别测试
-│   ├── test_retrieval_service.py             # 检索、RRF、query builder 与重排测试
-│   ├── test_retrieval_eval_contract.py        # Eval Measurement / --ci contract 测试
-│   ├── test_chat_stream_timing.py             # 流式时序测试
-│   ├── test_frontend_security.py              # 前端安全边界测试
-│   ├── test_session_api.py                    # 会话 API 测试
-│   └── test_system_status_api.py              # 系统状态接口测试
-├── docs/                                     # 补充文档与素材
-│   └── assets/                               # 截图素材与素材规范
-│       ├── README.md                         # 截图命名、分辨率和补图清单
-│       └── screenshots/                      # README 截图资源目录
-├── data/                                     # 运行生成的 SQLite 数据目录
-├── logs/                                     # 运行日志目录
-├── uploads/                                  # 上传文件缓存目录
-├── volumes/                                  # Milvus 相关持久卷目录
-├── .env.example                              # 环境变量模板
-├── Makefile                                  # Linux / macOS 常用命令
-├── OpsPilot_demo_script.md                   # 演示讲解脚本
-├── OpsPilot_interview_handbook.md            # 面试与项目讲解手册
-├── pyproject.toml                            # 依赖、格式化、测试配置
-├── pyrightconfig.json                        # Pyright 配置
-├── start-windows.bat                         # Windows 一键启动脚本
-├── stop-windows.bat                          # Windows 一键停止脚本
-├── vector-database.yml                       # Milvus Docker Compose 配置
-├── README.md                                 # 中文说明
-└── README.en.md                              # 英文说明
+apps/backend/          FastAPI、LangChain/LangGraph、SQLite、Alembic、uv
+apps/frontend/         Vue 3、Vite、TypeScript
+packages/api-contracts 共享的 TypeScript HTTP 与 SSE 契约
+config/                可提交的配置模板与被 Git 忽略的本地 JSON 配置
+infra/                 Milvus 与 Alertmanager 基础设施 Compose 资产
+scripts/               本机启动脚本
+openspec/              OpenSpec 规格、变更与归档
+docs/                  安装、架构与运维文档
 ```
 
-## 📚 文档索引
+## 三平台安装
 
-- [OpsPilot_demo_script.md](./OpsPilot_demo_script.md)：演示顺序、提示词和讲解节奏
-- [OpsPilot_interview_handbook.md](./OpsPilot_interview_handbook.md)：面试讲解、Eval-driven 工程故事和问答准备
-- [evals/README.md](./evals/README.md)：Retrieval Eval、Baseline v1/v1.1 与 Measurement / --ci Contract
-- [mcp_servers/README.md](./mcp_servers/README.md)：MCP 服务补充说明
-- [docs/assets/README.md](./docs/assets/README.md)：截图素材维护规范
+请先按当前操作系统完成完整依赖安装：
 
-## ⚙️ 关键配置
+- [macOS 安装指南](docs/setup/macos.md)
+- [Linux 安装指南](docs/setup/linux.md)
+- [Windows 安装指南](docs/setup/windows.md)
 
-### 🧪 应用与模型
+三个指南均覆盖 Git、Docker、Node/npm、uv 与官方 `cls-mcp-server`。
 
-| 变量 | 说明 | 默认值 |
-|---|---|---|
-| `APP_NAME` | 应用名称 | `OpsPilot` |
-| `APP_TITLE` | 页面标题 | `基于 RAG 与 MCP 的智能运维助手` |
-| `DASHSCOPE_API_KEY` | DashScope API Key | 空 |
-| `DASHSCOPE_MODEL` | 主对话模型 | `qwen-max` |
-| `DASHSCOPE_EMBEDDING_MODEL` | 向量模型 | `text-embedding-v4` |
-| `DASHSCOPE_RERANK_MODEL` | 重排模型 | `qwen3-rerank` |
+## 配置方式
 
-### 🗃️ 存储与检索
-
-| 变量 | 说明 | 默认值 |
-|---|---|---|
-| `DATABASE_PATH` | SQLite 数据库路径 | `./data/opspilot.db` |
-| `MILVUS_HOST` | Milvus 地址 | `localhost` |
-| `MILVUS_PORT` | Milvus 端口 | `19530` |
-| `RAG_TOP_K` | 最终引用文档数 | `3` |
-| `DENSE_TOP_K` | 稠密召回候选数 | `6` |
-| `SPARSE_TOP_K` | 稀疏召回候选数 | `6` |
-| `HYBRID_TOP_K` | 融合后保留数 | `4` |
-| `RERANK_TOP_K` | 重排后保留数 | `3` |
-
-### 🔐 鉴权与运行状态
-
-| 变量 | 说明 | 默认值 |
-|---|---|---|
-| `JWT_SECRET` | JWT 密钥 | 开发默认值 |
-| `JWT_EXPIRE_MINUTES` | JWT 有效期 | `720` |
-| `PASSWORD_HASH_ITERATIONS` | PBKDF2 轮数 | `120000` |
-| `MCP_CLS_URL` | CLS MCP 地址 | `http://localhost:8003/mcp` |
-| `MCP_MONITOR_URL` | Monitor MCP 地址 | `http://localhost:8004/mcp` |
-| `METRICS_ENABLED` | 是否启用指标采集 | `True` |
-
-
-## 🔌 MCP Mock / Real 边界
-
-OpsPilot 的 MCP 协议链路是真实实现：应用通过 `MultiServerMCPClient` 连接两个本地 FastMCP server，并在 AIOps 链路中保留工具调用记录。
-
-当前仓库默认的日志和监控数据源是可复现 Mock 数据：没有默认接入生产 Prometheus、真实腾讯云 CLS 或 MySQL。`mcp_servers/` 保留真实数据源适配入口，适合后续替换为生产 API。
-
-## 🎯 AIOps 诊断链路
-
-1. **Planner** 生成诊断计划
-2. **Executor** 调用 MCP 工具执行步骤
-3. **Replanner** 判断继续执行、调整计划或结束
-4. **Reporter** 汇总诊断结果并写入 `workflow_runs`
-
-适合演示的典型场景：
-
-- CPU / 内存 / 磁盘等资源告警
-- 服务不可用与慢响应排查
-- 结合日志、监控和知识库的诊断问答
-
-## 🎬 演示与录屏
-
-- `viewer` 账号适合演示普通问答、知识问答和流式回复
-- `operator` 账号适合演示 AIOps 诊断、文档上传和系统状态查看
-- 前端右侧工作区适合截取回答内容，左侧面板适合截取会话历史、执行轨迹和系统状态
-- 录屏脚本和截图规范分别放在 [OpsPilot_demo_script.md](./OpsPilot_demo_script.md) 与 [docs/assets/README.md](./docs/assets/README.md)
-
-## 🧪 测试与观测
-
-### ✅ 当前测试覆盖
-
-- 鉴权服务测试
-- 意图识别规则测试
-- 混合检索、RRF、query builder 与重排测试
-- Retrieval Eval Measurement / `--ci` Contract 测试
-- 流式对话时序测试
-- API 与前端权限边界测试
-- 会话 API 与系统状态接口测试
-
-当前仓库配置了本地测试和代码质量工具；GitHub CI 暂未配置，不使用 CI badge。
-
-### ▶️ 运行测试
+应用只从本地 JSON 配置文件读取项目配置，不读取本机 `.env` 文件或环境变量。首次使用时，从不含密钥的模板创建本地配置：
 
 ```bash
-make test
-make coverage
+cp config/project.template.json config/project.json
+cp config/user.project.template.json config/user.project.json
 ```
 
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe -m pytest --cov=app --cov-report=term-missing
-```
+- `config/project.json`：基础运行配置，仅保存在本机。
+- `config/user.project.json`：个人模型与 CLS 配置，仅保存在本机并覆盖基础配置。
+- `config/project.template.json`、`config/user.project.template.json`：可安全提交的配置模板。
 
-### 📈 当前指标
+两个本地配置文件均被 Git 忽略。请阅读[配置与运维教程](docs/operations-and-monitoring.md)填写模型密钥、CLS 凭据与其他本机配置，禁止将真实凭据加入版本控制。
 
-- HTTP 请求总量
-- 请求平均时延
-- 稠密检索耗时
-- 稀疏检索耗时
-- rerank 耗时
-- MCP 工具调用成功率 / 失败率
-- AIOps 工作流总耗时
+## 本地开发
 
-## 🧭 开发命令
+Docker Compose **只**负责运行 etcd、MinIO、Milvus、Attu 和 Alertmanager。CLS MCP Server、后端与前端均直接在本机运行，不会通过 Compose 启动。
 
-### 🐧 Linux / macOS
+### 一键启动
+
+在仓库根目录执行：
 
 ```bash
-make init
-make start
-make stop
-make restart
-
-make install-dev
-make sync
-
-make up
-make down
-make status
-
-make upload
-make list-docs
-make check
-make status-mcp
-
-make format
-make lint
-make fix
-make test
-make coverage
+./scripts/start-local.sh
 ```
 
-### 🪟 Windows
+在 Windows 命令提示符中执行：
 
-```powershell
-.\start-windows.bat
-.\stop-windows.bat
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe -m ruff check app tests
-.\.venv\Scripts\python.exe -m black app tests
+```text
+scripts\start-local.bat
 ```
 
-## ❓ 常见问题
+启动脚本会启动基础设施容器、准备项目依赖、执行 SQLite 迁移，并在本机启动 MCP、后端和前端。进程日志写入 `apps/backend/var/`。
 
-### 🪟 Windows 下 `make` 不可用怎么办？
+### 手动启动
 
-优先使用：
-
-```powershell
-.\start-windows.bat
-.\stop-windows.bat
-```
-
-### 🔑 没有配置 DashScope API Key 能运行吗？
-
-可以启动页面、FastAPI 和本地单元测试，但完整模型与检索能力不可用。
-
-| Capability | Without DashScope Key |
-|---|---|
-| 页面 / FastAPI | 可启动 |
-| 本地单元测试 | 可运行 |
-| 真实 LLM Chat | 不可，只能返回未配置提示或轻量降级 |
-| Embedding | 不可 |
-| Dense indexing | 不可 |
-| 完整 Hybrid Retrieval | 不可正式运行 |
-| Retrieval Eval | 记为 `INFRA_BLOCKED` |
-
-Sparse 查询是否可用取决于本地 SQLite 是否已有索引，不能代表完整 Hybrid Retrieval 可用。完整演示建议配置 `DASHSCOPE_API_KEY`。
-
-### 🐳 `/health` 返回 Milvus 异常怎么办？
-
-先确认 Docker Desktop 已启动，再执行：
+安装前端和后端依赖：
 
 ```bash
-docker compose -f vector-database.yml up -d
+npm install
+cd apps/backend
+uv sync
+mkdir -p var
+uv run alembic upgrade head
 ```
 
-### 📤 上传文档为什么会失败？
+在仓库根目录启动所有容器基础设施：
 
-常见原因：
+```bash
+docker compose -f infra/compose.yaml up -d etcd minio milvus attu alertmanager
+```
 
-- 当前账号不是 `operator/admin`
-- 请求头里没有携带 `Authorization: Bearer <token>`
+使用 `config/project.json` 中 `clsMcpServer` 的配置启动官方 CLS MCP Server，然后启动后端：
 
-### 🧪 这是生产系统吗？
+```bash
+cd apps/backend
+uv run uvicorn opspilot.api.app:create_app --factory --host 127.0.0.1 --port 8000
+```
 
-当前更适合作为链路完整、结构清晰、边界明确的智能运维 Agent 工程样例和演示项目。
+在第二个终端启动前端：
+
+```bash
+cd apps/frontend
+npm run dev -- --host 127.0.0.1
+```
+
+本地地址：
+
+- 前端：`http://127.0.0.1:5173`
+- 后端：`http://127.0.0.1:8000`
+- 后端就绪检查：`http://127.0.0.1:8000/ready`
+- CLS MCP SSE：`http://127.0.0.1:3000/sse`
+- Alertmanager：`http://127.0.0.1:9093`
+- Milvus：`http://127.0.0.1:19530`
+- Attu：`http://127.0.0.1:8001`
+
+## 真实日志与告警教程
+
+上传 CLS 日志、发布本地 Alertmanager 告警、索引 SOP 与从前端执行 AIOps 诊断均为显式操作，不属于日常启动流程。请按照[真实日志与告警教程](docs/tutorials/real-log-and-alert.md)执行。
+
+## 验证命令
+
+在仓库根目录执行 OpenSpec 验证：
+
+```bash
+openspec validate --all
+```
+
+在 `apps/backend` 执行后端检查：
+
+```bash
+uv run ruff check .
+uv run pyright
+uv run pytest
+```
+
+在 `apps/frontend` 执行前端检查：
+
+```bash
+npm run typecheck
+npm run test
+npm run build
+```
